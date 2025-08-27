@@ -1434,6 +1434,7 @@ def score_given_map_and_trees(txt_path: str, trees, meta_paths, fixed_k,
 
     # Print vertices and edges
     V, E = _extract_vertices_edges_from_adj(adj)
+    #HIIII
     # print("=== Parsed Graph: Vertices ===")
     # for v in V: 
     #     print(" ", v)
