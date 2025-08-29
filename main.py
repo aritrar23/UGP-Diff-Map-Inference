@@ -2100,7 +2100,7 @@ def main_multi_type(type_nums=[6,10,14],
             print(f"{t:<6} {idx:<6} {cells:<7} {jd:<12.6f} {gt:<14.6f} {pr:<14.6f}")
 
 if __name__ == "__main__":
-    main_multi_type(
+    main_multi_type (
         type_nums=[6],
         maps_start=17,
         maps_end=26,
@@ -2109,6 +2109,7 @@ if __name__ == "__main__":
         log_dir="logs_types"
     )
 
+#HI
 
 # if __name__ == "__main__":
 #     main("Data")   # pass base directory here
