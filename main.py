@@ -1,10 +1,10 @@
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import os
 import random
 import csv
 from typing import Iterable, Tuple, List
 from collections import Counter, defaultdict
 from tqdm import trange
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -927,6 +927,179 @@ def score_structure(struct: Structure,
 # Annealed stochastic search
 # ----------------------------
 
+# def map_search(
+#     S: List[str],
+#     trees: List[TreeNode],
+#     leaf_type_maps: List[Dict[str,str]],
+#     priors: Priors,
+#     unit_drop_edges: bool = True,
+#     fixed_k: Optional[int] = None,
+#     init_seed: int = 0,
+#     iters: int = 500,
+#     restarts: int = 3,
+#     temp_init: float = 1.0,
+#     temp_decay: float = 0.995,
+#     move_probs = (0.25, 0.25, 0.25, 0.25),  # addP, rmP, addE, rmE (swap used when fixed_k)
+#     prune_eps: float = 0.0
+# ):
+#     """
+#     Stochastic MAP (maximum a posteriori) structure search over F = (Z_active, A).
+
+#     What this does (high level):
+#       • Repeatedly constructs a candidate structure F = (Z, A) consisting of:
+#           - Z: active potency sets (nodes) selected from all non-empty subsets of S
+#           - A: directed edges between admissible pairs of potencies
+#       • Scores each F using `score_structure` (log prior + sum log likelihoods over trees).
+#       • Performs a simulated-annealing-style random local search with moves that
+#         add/remove/swap potencies and add/remove edges, keeping the best seen solution.
+
+#     Where this is used:
+#       • Called by your main script after loading trees and leaf→type maps.
+#       • Returns (best_structure, best_log_posterior, per_tree_log_likelihoods).
+#     """
+#     rng = random.Random(init_seed)
+
+#     best_global = None        # best Structure found across all restarts
+#     best_score = float("-inf")
+#     best_logs = None          # (optional) store per-tree logs for the best
+
+#     for rs in range(restarts):
+#         # --- Initialization of a starting structure for this restart ---
+#         if priors.potency_mode=="fixed_k":
+#             # Start with singletons plus exactly `fixed_k` randomly sampled multi-type potencies.
+#             # Z = build_Z_active(S, fixed_k=priors.fixed_k, max_potency_size=len(S), seed=rng.randint(0,10**9))
+
+#             aggregated_transitions, Z = init_progenitors_union_fitch(S, trees, leaf_type_maps, fixed_k)
+            
+
+#         else:
+#             # Start with singletons + a few multis (here: fixed_k=0 means only singletons to start).
+#             base = build_Z_active(S, fixed_k=0, max_potency_size=len(S), seed=rng.randint(0,10**9))
+#             Z = base
+
+#         # Initial edge set: here empty (no edges). You can explore edges via moves later.
+#         # NOTE: with A = {}, parent/child labels cannot "drop" unless identical; feasibility then
+#         # depends on Z containing a superset label compatible with each tree.
+#         # A = build_edges(Z, ...) would initialize a fully connected admissible DAG instead.
+#         # A = {}
+        
+#         A = build_mid_sized_connected_dag(Z,keep_prob = 0.3,rng = None)
+
+#         # Build the initial Structure and score it.
+#         current = Structure(S, Z, A, unit_drop=unit_drop_edges)
+#         curr_score, _ = score_structure(current, trees, leaf_type_maps, priors, prune_eps)
+
+#         # --- Fallback: resample a few times if the initialization is invalid (score = -inf) ---
+#         attempts=0
+#         while not math.isfinite(curr_score) and attempts<20:
+#             # Rebuild Z again (same logic as above) and try a fresh start.
+#             # Z = build_Z_active(S, fixed_k=(priors.fixed_k if priors.potency_mode=="fixed_k" else 0),
+#             #                    max_potency_size=len(S), seed=rng.randint(0,10**9))
+#             aggregated_transitions, Z = init_progenitors_union_fitch(S, trees, leaf_type_maps, fixed_k)
+
+#             # Start again with no edges; exploration will add/remove edges during the search.
+#             # A = {}
+#             A = build_mid_sized_connected_dag(Z,keep_prob = 0.3,rng = None)
+
+#             # (Debug prints you added: show sampled Z and A, and the resulting score attempt)
+#             print(f"Z:{Z}")
+#             print(f"A:{A}")
+
+#             current = Structure(S, Z, A, unit_drop=unit_drop_edges)
+#             curr_score, _ = score_structure(current, trees, leaf_type_maps, priors, prune_eps)
+#             print(curr_score)
+#             attempts+=1
+
+#         # If after several attempts we still don't have a finite score, bail out for this run.
+#         if not math.isfinite(curr_score):
+#             # This typically indicates that, with the chosen initialization (e.g., A = {} and
+#             # the sampled Z), no feasible labeling exists for at least one tree, so P(T|F)=0.
+#             # Consider easing the settings, e.g., initializing with edges or ensuring Z has a superset.
+#             raise RuntimeError("Failed to initialize a valid structure; consider easing settings.")
+
+#         # Track the best for this restart (local best) and across restarts (global best).
+#         local_best = current.clone()
+#         local_best_score = curr_score
+#         if (best_score < curr_score):
+#             best_score = curr_score
+
+#             best_global = current.clone();
+
+#         # Simulated annealing temperature and move probabilities
+#         tau = temp_init
+#         addP, rmP, addE, rmE = move_probs
+
+#         # ---- Main annealed local search loop ----
+#         pbar = trange(iters, desc=f"Restart {rs+1}/{restarts}", leave=True)
+#         for it in pbar:
+#             # --- Propose a neighboring structure by one of the local moves ---
+#             prop=None
+#             if priors.potency_mode=="fixed_k":
+#                 # In fixed-k mode over multis:
+#                 #   - Prefer to modify edges; to change potencies while keeping |multis|=k, use "swap".
+#                 r = rng.random()
+#                 if r < addE:
+#                     prop = current.propose_add_edge(rng)     # add a single admissible edge
+#                 elif r < addE + rmE:
+#                     prop = current.propose_remove_edge(rng)  # remove a single existing edge
+#                 else:
+#                     prop = current.propose_swap_potency(rng) # swap one multi for another
+#             else:
+#                 # In non-fixed-k mode:
+#                 #   - Add/remove potencies and add/remove edges according to move_probs.
+#                 r = rng.random()
+#                 if r < addP:
+#                     prop = current.propose_add_potency(rng)
+#                 elif r < addP + rmP:
+#                     prop = current.propose_remove_potency(rng)
+#                 elif r < addP + rmP + addE:
+#                     prop = current.propose_add_edge(rng)
+#                 else:
+#                     prop = current.propose_remove_edge(rng)
+
+#             if prop is None:
+#                 # If the chosen move had no available candidate (e.g., no edges to remove), just cool.
+#                 tau *= temp_decay
+#                 # Progress bar diagnostics: global best, current score, and temperature.
+#                 pbar.set_postfix({"Best": f"{best_score:.3f}", "Curr": f"{curr_score:.3f}", "Temp": f"{tau:.3f}"})
+#                 continue
+
+#             # --- Score the proposed structure ---
+#             prop_score, _ = score_structure(prop, trees, leaf_type_maps, priors, prune_eps)
+
+#             # --- Metropolis/annealing acceptance ---
+#             delta = prop_score - curr_score
+#             accept = (delta >= 0) or (rng.random() < math.exp(delta / max(tau,1e-12))) #Probability injected here
+#             if accept:
+#                 # Move to the proposal
+#                 current = prop
+#                 curr_score = prop_score
+
+#                 # Update local best (within this restart)
+#                 if curr_score > local_best_score:
+#                     local_best = current.clone()
+#                     local_best_score = curr_score
+
+#                 # Update global best (across all restarts)
+#                 if curr_score > best_score:
+#                     best_global = current.clone()
+#                     best_score = curr_score
+#                     # print("New best_score is", best_score);
+#                     best_logs = None  # defer detailed per-tree logs until the end
+
+#             # Geometric cooling of the temperature
+#             tau *= temp_decay
+
+#             # Progress bar diagnostics each iteration
+#             pbar.set_postfix({"Best": f"{best_score:.3f}", "Curr": f"{curr_score:.3f}", "Temp": f"{tau:.3f}"})
+#             # print(f"Current global best: {best_score}")
+#         # end of one restart; loop begins again if more restarts remain
+
+#     # After all restarts, recompute per-tree logs for the best structure found
+#     final_score, logLs = score_structure(best_global, trees, leaf_type_maps, priors, prune_eps)
+#     return best_global, final_score, logLs
+
+# Nischay wala
 def map_search(
     S: List[str],
     trees: List[TreeNode],
@@ -940,113 +1113,64 @@ def map_search(
     temp_init: float = 1.0,
     temp_decay: float = 0.995,
     move_probs = (0.25, 0.25, 0.25, 0.25),  # addP, rmP, addE, rmE (swap used when fixed_k)
-    prune_eps: float = 0.0
+    prune_eps: float = 0.0,
+    progress: bool = True,
 ):
-    """
-    Stochastic MAP (maximum a posteriori) structure search over F = (Z_active, A).
-
-    What this does (high level):
-      • Repeatedly constructs a candidate structure F = (Z, A) consisting of:
-          - Z: active potency sets (nodes) selected from all non-empty subsets of S
-          - A: directed edges between admissible pairs of potencies
-      • Scores each F using `score_structure` (log prior + sum log likelihoods over trees).
-      • Performs a simulated-annealing-style random local search with moves that
-        add/remove/swap potencies and add/remove edges, keeping the best seen solution.
-
-    Where this is used:
-      • Called by your main script after loading trees and leaf→type maps.
-      • Returns (best_structure, best_log_posterior, per_tree_log_likelihoods).
-    """
     rng = random.Random(init_seed)
 
-    best_global = None        # best Structure found across all restarts
+    best_global = None
     best_score = float("-inf")
-    best_logs = None          # (optional) store per-tree logs for the best
+    best_logs = None
 
     for rs in range(restarts):
-        # --- Initialization of a starting structure for this restart ---
+        # --- init structure
+        # print(rs)
         if priors.potency_mode=="fixed_k":
-            # Start with singletons plus exactly `fixed_k` randomly sampled multi-type potencies.
-            # Z = build_Z_active(S, fixed_k=priors.fixed_k, max_potency_size=len(S), seed=rng.randint(0,10**9))
-
             aggregated_transitions, Z = init_progenitors_union_fitch(S, trees, leaf_type_maps, fixed_k)
-            
-
         else:
-            # Start with singletons + a few multis (here: fixed_k=0 means only singletons to start).
             base = build_Z_active(S, fixed_k=0, max_potency_size=len(S), seed=rng.randint(0,10**9))
             Z = base
-
-        # Initial edge set: here empty (no edges). You can explore edges via moves later.
-        # NOTE: with A = {}, parent/child labels cannot "drop" unless identical; feasibility then
-        # depends on Z containing a superset label compatible with each tree.
-        # A = build_edges(Z, ...) would initialize a fully connected admissible DAG instead.
-        # A = {}
-        
         A = build_mid_sized_connected_dag(Z,keep_prob = 0.3,rng = None)
-
-        # Build the initial Structure and score it.
         current = Structure(S, Z, A, unit_drop=unit_drop_edges)
         curr_score, _ = score_structure(current, trees, leaf_type_maps, priors, prune_eps)
 
-        # --- Fallback: resample a few times if the initialization is invalid (score = -inf) ---
-        attempts=0
-        while not math.isfinite(curr_score) and attempts<20:
-            # Rebuild Z again (same logic as above) and try a fresh start.
-            # Z = build_Z_active(S, fixed_k=(priors.fixed_k if priors.potency_mode=="fixed_k" else 0),
-            #                    max_potency_size=len(S), seed=rng.randint(0,10**9))
+        # fallback: if invalid, keep sampling until valid
+        attempts = 0
+        while not math.isfinite(curr_score) and attempts < 720:
             aggregated_transitions, Z = init_progenitors_union_fitch(S, trees, leaf_type_maps, fixed_k)
-
-            # Start again with no edges; exploration will add/remove edges during the search.
-            # A = {}
             A = build_mid_sized_connected_dag(Z,keep_prob = 0.3,rng = None)
-
-            # (Debug prints you added: show sampled Z and A, and the resulting score attempt)
-            print(f"Z:{Z}")
+            # A = {}
+            print(f"Z:{Z}") 
             print(f"A:{A}")
-
             current = Structure(S, Z, A, unit_drop=unit_drop_edges)
             curr_score, _ = score_structure(current, trees, leaf_type_maps, priors, prune_eps)
-            print(curr_score)
-            attempts+=1
+            # print(curr_score)
+            attempts += 1
 
-        # If after several attempts we still don't have a finite score, bail out for this run.
         if not math.isfinite(curr_score):
-            # This typically indicates that, with the chosen initialization (e.g., A = {} and
-            # the sampled Z), no feasible labeling exists for at least one tree, so P(T|F)=0.
-            # Consider easing the settings, e.g., initializing with edges or ensuring Z has a superset.
             raise RuntimeError("Failed to initialize a valid structure; consider easing settings.")
 
-        # Track the best for this restart (local best) and across restarts (global best).
         local_best = current.clone()
         local_best_score = curr_score
-        if (best_score < curr_score):
-            best_score = curr_score
-            best_global = current.clone();
 
-        # Simulated annealing temperature and move probabilities
         tau = temp_init
         addP, rmP, addE, rmE = move_probs
 
-        # ---- Main annealed local search loop ----
-        pbar = trange(iters, desc=f"Restart {rs+1}/{restarts}", leave=True)
-        for it in pbar:
-            # --- Propose a neighboring structure by one of the local moves ---
-            prop=None
+        # iterator respects the 'progress' flag
+        iterator = trange(iters, desc=f"Restart {rs+1}/{restarts}", leave=True) if progress else range(iters)
+
+        for _ in iterator:
+            # choose move
+            prop = None
+            r = rng.random()
             if priors.potency_mode=="fixed_k":
-                # In fixed-k mode over multis:
-                #   - Prefer to modify edges; to change potencies while keeping |multis|=k, use "swap".
-                r = rng.random()
                 if r < addE:
-                    prop = current.propose_add_edge(rng)     # add a single admissible edge
+                    prop = current.propose_add_edge(rng)
                 elif r < addE + rmE:
-                    prop = current.propose_remove_edge(rng)  # remove a single existing edge
+                    prop = current.propose_remove_edge(rng)
                 else:
-                    prop = current.propose_swap_potency(rng) # swap one multi for another
+                    prop = current.propose_swap_potency(rng)
             else:
-                # In non-fixed-k mode:
-                #   - Add/remove potencies and add/remove edges according to move_probs.
-                r = rng.random()
                 if r < addP:
                     prop = current.propose_add_potency(rng)
                 elif r < addP + rmP:
@@ -1057,46 +1181,109 @@ def map_search(
                     prop = current.propose_remove_edge(rng)
 
             if prop is None:
-                # If the chosen move had no available candidate (e.g., no edges to remove), just cool.
                 tau *= temp_decay
-                # Progress bar diagnostics: global best, current score, and temperature.
-                pbar.set_postfix({"Best": f"{best_score:.3f}", "Curr": f"{curr_score:.3f}", "Temp": f"{tau:.3f}"})
+                if progress:
+                    iterator.set_postfix({"Best": f"{best_score:.3f}", "Curr": f"{curr_score:.3f}", "Temp": f"{tau:.3f}"})
                 continue
 
-            # --- Score the proposed structure ---
             prop_score, _ = score_structure(prop, trees, leaf_type_maps, priors, prune_eps)
 
-            # --- Metropolis/annealing acceptance ---
             delta = prop_score - curr_score
-            accept = (delta >= 0) or (rng.random() < math.exp(delta / max(tau,1e-12))) #Probability injected here
+            accept = (delta >= 0) or (rng.random() < math.exp(delta / max(tau,1e-12)))
             if accept:
-                # Move to the proposal
                 current = prop
                 curr_score = prop_score
 
-                # Update local best (within this restart)
                 if curr_score > local_best_score:
                     local_best = current.clone()
                     local_best_score = curr_score
 
-                # Update global best (across all restarts)
                 if curr_score > best_score:
                     best_global = current.clone()
                     best_score = curr_score
-                    # print("New best_score is", best_score);
-                    best_logs = None  # defer detailed per-tree logs until the end
+                    best_logs = None  # compute later if needed
 
-            # Geometric cooling of the temperature
             tau *= temp_decay
+            # print(f"rs:{rs},curr{curr_score}")
+            if progress:
+                iterator.set_postfix({"Best": f"{best_score:.3f}", "Curr": f"{curr_score:.3f}", "Temp": f"{tau:.3f}"})
 
-            # Progress bar diagnostics each iteration
-            pbar.set_postfix({"Best": f"{best_score:.3f}", "Curr": f"{curr_score:.3f}", "Temp": f"{tau:.3f}"})
-            # print(f"Current global best: {best_score}")
-        # end of one restart; loop begins again if more restarts remain
-
-    # After all restarts, recompute per-tree logs for the best structure found
+    # after restarts, recompute detailed logs for best_global
     final_score, logLs = score_structure(best_global, trees, leaf_type_maps, priors, prune_eps)
     return best_global, final_score, logLs
+
+def _map_search_worker(args):
+    (S, trees, leaf_type_maps, priors, unit_drop_edges, fixed_k,
+     init_seed, iters, restarts, temp_init, temp_decay, move_probs, prune_eps) = args
+    # progress=False inside workers to avoid tqdm noise
+
+    return map_search(
+        S=S,
+        trees=trees,
+        leaf_type_maps=leaf_type_maps,
+        priors=priors,
+        unit_drop_edges=unit_drop_edges,
+        fixed_k=fixed_k,
+        init_seed=init_seed,
+        iters=iters,
+        restarts=restarts,
+        temp_init=temp_init,
+        temp_decay=temp_decay,
+        move_probs=move_probs,
+        prune_eps=prune_eps,
+        progress=True
+    )
+
+def map_search_parallel(
+    S: List[str],
+    trees: List[TreeNode],
+    leaf_type_maps: List[Dict[str,str]],
+    priors: Priors,
+    unit_drop_edges: bool = True,
+    fixed_k: Optional[int] = None,
+    init_seed: int = 0,
+    iters: int = 500,
+    restarts: int = 12,
+    temp_init: float = 1.0,
+    temp_decay: float = 0.995,
+    move_probs = (0.25, 0.25, 0.25, 0.25),
+    prune_eps: float = 0.0,
+    n_jobs: Optional[int] = None,
+):
+    """
+    Parallelizes restarts across processes and returns the best result.
+    NOTE: On Windows/macOS, call this under `if __name__ == "__main__":` to avoid spawn issues.
+    """
+    if n_jobs is None:
+        n_jobs = max(1, (os.cpu_count() or 2) - 1)
+
+    # Split restarts across jobs
+    per_job = [restarts // n_jobs] * n_jobs
+    for i in range(restarts % n_jobs):
+        per_job[i] += 1
+    per_job = [r for r in per_job if r > 0]
+    n_jobs = len(per_job)
+
+    # Unique seeds per worker to diversify trajectories
+    seeds = [init_seed + 10_000 * i for i in range(n_jobs)]
+
+    tasks = []
+    for r, seed in zip(per_job, seeds):
+        tasks.append((S, trees, leaf_type_maps, priors, unit_drop_edges, fixed_k,
+                      seed, iters, r, temp_init, temp_decay, move_probs, prune_eps))
+
+    best_global = None
+    best_score = float("-inf")
+    best_logs = None
+
+    with ProcessPoolExecutor(max_workers=n_jobs) as ex:
+        futures = [ex.submit(_map_search_worker, t) for t in tasks]
+        for fut in as_completed(futures):
+            bestF, score, logs = fut.result()
+            if score > best_score:
+                best_global, best_score, best_logs = bestF, score, logs
+
+    return best_global, best_score, best_logs
 
 
 import os
@@ -1434,7 +1621,6 @@ def score_given_map_and_trees(txt_path: str, trees, meta_paths, fixed_k,
 
     # Print vertices and edges
     V, E = _extract_vertices_edges_from_adj(adj)
-    #HIIII
     # print("=== Parsed Graph: Vertices ===")
     # for v in V: 
     #     print(" ", v)
@@ -1607,11 +1793,23 @@ from typing import List
 def pot_str(P):
     return "{" + ",".join(sorted(list(P))) + "}"
 
-def process_folder(folder: str, priors, iters=50, restarts=2):
-    """Process a single folder: run MAP search, print details, and return metrics."""
-    # ---- Load trees and meta maps ----
-    trees = [read_newick_file(os.path.join(folder, f"{folder}_tree_{i}.txt")) for i in range(5)]
-    meta_paths = [os.path.join(folder, f"{folder}_meta_{i}.txt") for i in range(5)]
+def process_folder(folder: str, priors: Priors, iters=50, restarts=2):
+    """
+    `folder` is a FULL path now (e.g., 'Data/0002').
+    Filenames are based on the folder's basename (e.g., '0002').
+    """
+    folder_path = folder  # already full path
+    base = os.path.basename(os.path.normpath(folder_path))  #'0002'
+
+    # Build paths WITHOUT adding 'Data' again
+    tree_paths = [os.path.join(folder_path, f"{base}_tree_{i}.txt") for i in range(5)]
+    meta_paths = [os.path.join(folder_path, f"{base}_meta_{i}.txt") for i in range(5)]
+
+    # (Optional) sanity check
+    for p in tree_paths + meta_paths:
+        if not os.path.exists(p):
+            raise FileNotFoundError(p)
+    trees = [read_newick_file(p) for p in tree_paths]
     raw_maps = [read_leaf_type_map(p) for p in meta_paths]
     leaf_type_maps = [filter_leaf_map_to_tree(root, m) for root, m in zip(trees, raw_maps)]
 
@@ -1619,20 +1817,37 @@ def process_folder(folder: str, priors, iters=50, restarts=2):
     S = sorted({str(t) for m in leaf_type_maps for t in m.values()})
 
     # ---- Run search ----
-    bestF, best_score, per_tree_logs = map_search(
+    # bestF, best_score, per_tree_logs = map_search(
+    #     S=S,
+    #     trees=trees,
+    #     leaf_type_maps=leaf_type_maps,
+    #     priors=priors,
+    #     unit_drop_edges=False,
+    #     fixed_k=priors.fixed_k if priors.potency_mode == "fixed_k" else None,
+    #     init_seed=123,
+    #     iters=iters,
+    #     restarts=restarts,
+    #     temp_init=1.0,
+    #     temp_decay=0.995,
+    #     move_probs=(0.3, 0.2, 0.3, 0.2),
+    #     prune_eps=0.0
+    # )
+
+    bestF, best_score, per_tree_logs = map_search_parallel(
         S=S,
         trees=trees,
         leaf_type_maps=leaf_type_maps,
         priors=priors,
         unit_drop_edges=False,
-        fixed_k=priors.fixed_k if priors.potency_mode == "fixed_k" else None,
+        fixed_k=priors.fixed_k if priors.potency_mode=="fixed_k" else None,
         init_seed=123,
         iters=iters,
         restarts=restarts,
         temp_init=1.0,
         temp_decay=0.995,
         move_probs=(0.3, 0.2, 0.3, 0.2),
-        prune_eps=0.0
+        prune_eps=0.0,
+        n_jobs=os.cpu_count(),   # or a smaller number if memory-bound
     )
 
     # ---- Pretty print inferred map ----
@@ -1670,9 +1885,9 @@ def process_folder(folder: str, priors, iters=50, restarts=2):
         fixed_k=priors.fixed_k
     )
 
-    print("\nPredicted Sets:")
+    # print("\nPredicted Sets:")
     pretty_print_sets("Predicted Sets", predicted_sets)
-    print("\nGround Truth Sets:")
+    # print("\nGround Truth Sets:")
     pretty_print_sets("Ground Truth Sets", ground_truth_sets)
 
     # ---- Jaccard distance ----
@@ -1685,9 +1900,11 @@ def process_folder(folder: str, priors, iters=50, restarts=2):
     return jd, gt_loss, best_score
 
 
-def main():
+def main(base_path="Data"):
     random.seed(7)
-    folders = ["0002","0003","0004","0005","0006","0007","0008","0009","0010","0011"]  # <-- specify your folders
+    # folders = ["0002","0003","0004","0005","0006","0007","0008","0009","0010","0011"]
+    folders = ["0004"]
+    # folders = ["0002", ]  # keep folder names as-is (no Data prefix)
     priors = Priors(potency_mode="fixed_k", fixed_k=5, rho=0.2)
 
     results = []
@@ -1695,7 +1912,11 @@ def main():
     for folder in folders:
         print(f"\n================= Processing folder {folder} =================")
         try:
-            jd, gt_loss, pred_loss = process_folder(folder = folder, priors = priors, iters=50, restarts=2)
+            # prepend base_path when calling process_folder
+            full_path = os.path.join(base_path, folder)
+            jd, gt_loss, pred_loss = process_folder(
+                folder=full_path, priors=priors, iters=100, restarts=5
+            )
             results.append((folder, jd, gt_loss, pred_loss))
         except Exception as e:
             print(f"  ERROR processing {folder}: {e}")
@@ -1722,4 +1943,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main("Data")   # pass base directory here
