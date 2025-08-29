@@ -1,0 +1,2 @@
+type_6, map 0019, cells_50
+Jaccard=0.000000, GT loss=-196.010280, Pred loss=-232.802491

@@ -2,7 +2,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import os
 import random
 import csv
-from typing import Iterable, Tuple, List
+from typing import Iterable, Tuple, List, Optional
 from collections import Counter, defaultdict
 from tqdm import trange
 #!/usr/bin/env python3
@@ -1152,6 +1152,9 @@ def map_search(
 
         local_best = current.clone()
         local_best_score = curr_score
+        if (best_score < curr_score):
+            best_score = curr_score
+            best_global = current.clone()
 
         tau = temp_init
         addP, rmP, addE, rmE = move_probs
@@ -1790,49 +1793,69 @@ import random
 import csv
 from typing import List
 
-def pot_str(P):
-    return "{" + ",".join(sorted(list(P))) + "}"
 
-def process_folder(folder: str, priors: Priors, iters=50, restarts=2):
+def build_fate_map_path(map_idx: int, type_num: int) -> Tuple[str, str]:
+    idx4 = f"{map_idx:04d}"
+    fate_map_path = os.path.join(
+        "inputs", "differentiation_maps", "graph", f"type_{type_num}",
+        f"graph_fate_map{idx4}.txt"
+    )
+    if not os.path.exists(fate_map_path):
+        raise FileNotFoundError(f"Missing fate map: {fate_map_path}")
+    return fate_map_path, idx4
+
+def build_tree_and_meta_paths(map_idx: int, type_num: int, cells_n: int) -> Tuple[List[str], List[str]]:
+    idx4 = f"{map_idx:04d}"
+    folder = os.path.join("inputs", "trees", "graph", f"type_{type_num}", f"cells_{cells_n}")
+    tree_paths = [os.path.join(folder, f"{idx4}_tree_{i}.txt") for i in range(5)]
+    meta_paths = [os.path.join(folder, f"{idx4}_meta_{i}.txt") for i in range(5)]
+    for p in tree_paths + meta_paths:
+        if not os.path.exists(p):
+            raise FileNotFoundError(f"Expected file not found: {p}")
+    return tree_paths, meta_paths
+
+def read_trees_and_maps(tree_paths: List[str], meta_paths: List[str]):
     """
-    `folder` is a FULL path now (e.g., 'Data/0002').
-    Filenames are based on the folder's basename (e.g., '0002').
+    Load Newick trees and their leaf→type mappings.
+    Returns:
+        trees          : list[TreeNode]
+        leaf_type_maps : list[dict]
+        S              : sorted list of all types observed across maps
     """
-    folder_path = folder  # already full path
-    base = os.path.basename(os.path.normpath(folder_path))  #'0002'
-
-    # Build paths WITHOUT adding 'Data' again
-    tree_paths = [os.path.join(folder_path, f"{base}_tree_{i}.txt") for i in range(5)]
-    meta_paths = [os.path.join(folder_path, f"{base}_meta_{i}.txt") for i in range(5)]
-
-    # (Optional) sanity check
     for p in tree_paths + meta_paths:
         if not os.path.exists(p):
             raise FileNotFoundError(p)
+
     trees = [read_newick_file(p) for p in tree_paths]
     raw_maps = [read_leaf_type_map(p) for p in meta_paths]
     leaf_type_maps = [filter_leaf_map_to_tree(root, m) for root, m in zip(trees, raw_maps)]
 
-    # ---- Build S ----
+    # Build type universe S from whatever is actually present
     S = sorted({str(t) for m in leaf_type_maps for t in m.values()})
+    return trees, leaf_type_maps, S
 
-    # ---- Run search ----
-    # bestF, best_score, per_tree_logs = map_search(
-    #     S=S,
-    #     trees=trees,
-    #     leaf_type_maps=leaf_type_maps,
-    #     priors=priors,
-    #     unit_drop_edges=False,
-    #     fixed_k=priors.fixed_k if priors.potency_mode == "fixed_k" else None,
-    #     init_seed=123,
-    #     iters=iters,
-    #     restarts=restarts,
-    #     temp_init=1.0,
-    #     temp_decay=0.995,
-    #     move_probs=(0.3, 0.2, 0.3, 0.2),
-    #     prune_eps=0.0
-    # )
 
+# --- SMALL UTILITIES ---
+
+def pot_str(P): return "{" + ",".join(sorted(list(P))) + "}"
+
+def pretty_print_sets(name, sets):
+    print(f"\n{name}:")
+    for s in sorted(sets, key=lambda x: (len(x), sorted(x))):
+        print("  ", sorted(list(s)))
+
+# --- CASE RUNNER ---
+
+def process_case(map_idx: int, type_num: int, cells_n: int,
+                 priors, iters=100, restarts=5, log_dir: Optional[str]=None):
+
+    fate_map_path, idx4 = build_fate_map_path(map_idx, type_num)
+    tree_paths, meta_paths = build_tree_and_meta_paths(map_idx, type_num, cells_n)
+
+    # load trees + maps
+    trees, leaf_type_maps, S = read_trees_and_maps(tree_paths, meta_paths)
+
+    # run MAP search
     bestF, best_score, per_tree_logs = map_search_parallel(
         S=S,
         trees=trees,
@@ -1847,100 +1870,245 @@ def process_folder(folder: str, priors: Priors, iters=50, restarts=2):
         temp_decay=0.995,
         move_probs=(0.3, 0.2, 0.3, 0.2),
         prune_eps=0.0,
-        n_jobs=os.cpu_count(),   # or a smaller number if memory-bound
+        n_jobs=os.cpu_count()
     )
 
-    # ---- Pretty print inferred map ----
-    print(f"\n=== BEST MAP for {folder} ===")
-    multi_sorted = sorted(
-        [P for P in bestF.Z_active if len(P) >= 2],
-        key=lambda x: (len(x), tuple(sorted(list(x))))
-    )
+    # --- Pretty print inferred map ---
+    print(f"\n=== BEST MAP for type_{type_num}, map {idx4}, cells_{cells_n} ===")
+    multi_sorted = sorted([P for P in bestF.Z_active if len(P) >= 2],
+                          key=lambda x: (len(x), tuple(sorted(list(x)))))
     print("Active potencies (multi-type):")
-    for P in multi_sorted:
-        print("  ", pot_str(P))
+    for P in multi_sorted: print("  ", pot_str(P))
     print("Singletons (always active):")
-    for t in S:
-        print("  ", "{" + t + "}")
+    for t in S: print("  ", "{" + t + "}")
 
     print("\nEdges:")
-    edges = sorted(
-        [e for e, v in bestF.A.items() if v == 1],
-        key=lambda e: (len(e[0]), len(e[1]), tuple(sorted(list(e[0]))), tuple(sorted(list(e[1]))))
-    )
-    for P, Q in edges:
-        print(f"  {pot_str(P)} -> {pot_str(Q)}")
+    edges = sorted([e for e, v in bestF.A.items() if v == 1],
+                   key=lambda e: (len(e[0]), len(e[1]), tuple(sorted(list(e[0]))), tuple(sorted(list(e[1])))))
+    for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
 
     print("\nScores:")
     print(f"  log posterior: {best_score:.6f}")
     for i, lg in enumerate(per_tree_logs, 1):
         print(f"  Tree {i} log P(T|F*): {lg:.6f}")
 
-    # ---- Ground truth scoring ----
+    # --- Ground truth scoring ---
     predicted_sets = {p for p in bestF.Z_active if len(p) > 1}
     ground_truth_sets, gt_loss = score_given_map_and_trees(
-        os.path.join(folder, "main.txt"),
-        trees,
-        meta_paths,
-        fixed_k=priors.fixed_k
+        fate_map_path, trees, meta_paths, fixed_k=priors.fixed_k
     )
 
-    # print("\nPredicted Sets:")
     pretty_print_sets("Predicted Sets", predicted_sets)
-    # print("\nGround Truth Sets:")
     pretty_print_sets("Ground Truth Sets", ground_truth_sets)
 
-    # ---- Jaccard distance ----
     jd = jaccard_distance(predicted_sets, ground_truth_sets)
     print("\n=== Jaccard Distance ===")
-    print(f"Jaccard Distance (Predicted vs Ground Truth): {jd:.6f}")
+    print(f"Jaccard Distance (Pred vs GT): {jd:.6f}")
     print(f"Predicted map's loss: {best_score:.6f}")
     print(f"Ground truth's loss: {gt_loss:.6f}")
 
+    # optional logs
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, f"log_type{type_num}_{idx4}_cells{cells_n}.txt")
+        with open(log_path, "w") as f:
+            f.write(f"type_{type_num}, map {idx4}, cells_{cells_n}\n")
+            f.write(f"Jaccard={jd:.6f}, GT loss={gt_loss:.6f}, Pred loss={best_score:.6f}\n")
     return jd, gt_loss, best_score
 
+# def process_folder(folder: str, priors: Priors, iters=50, restarts=2):
+#     """
+#     `folder` is a FULL path now (e.g., 'Data/0002').
+#     Filenames are based on the folder's basename (e.g., '0002').
+#     """
+#     folder_path = folder  # already full path
+#     base = os.path.basename(os.path.normpath(folder_path))  #'0002'
 
-def main(base_path="Data"):
+#     # Build paths WITHOUT adding 'Data' again
+#     tree_paths = [os.path.join(folder_path, f"{base}_tree_{i}.txt") for i in range(5)]
+#     meta_paths = [os.path.join(folder_path, f"{base}_meta_{i}.txt") for i in range(5)]
+
+#     # (Optional) sanity check
+#     for p in tree_paths + meta_paths:
+#         if not os.path.exists(p):
+#             raise FileNotFoundError(p)
+#     trees = [read_newick_file(p) for p in tree_paths]
+#     raw_maps = [read_leaf_type_map(p) for p in meta_paths]
+#     leaf_type_maps = [filter_leaf_map_to_tree(root, m) for root, m in zip(trees, raw_maps)]
+
+#     # ---- Build S ----
+#     S = sorted({str(t) for m in leaf_type_maps for t in m.values()})
+
+#     # ---- Run search ----
+#     # bestF, best_score, per_tree_logs = map_search(
+#     #     S=S,
+#     #     trees=trees,
+#     #     leaf_type_maps=leaf_type_maps,
+#     #     priors=priors,
+#     #     unit_drop_edges=False,
+#     #     fixed_k=priors.fixed_k if priors.potency_mode == "fixed_k" else None,
+#     #     init_seed=123,
+#     #     iters=iters,
+#     #     restarts=restarts,
+#     #     temp_init=1.0,
+#     #     temp_decay=0.995,
+#     #     move_probs=(0.3, 0.2, 0.3, 0.2),
+#     #     prune_eps=0.0
+#     # )
+
+#     bestF, best_score, per_tree_logs = map_search_parallel(
+#         S=S,
+#         trees=trees,
+#         leaf_type_maps=leaf_type_maps,
+#         priors=priors,
+#         unit_drop_edges=False,
+#         fixed_k=priors.fixed_k if priors.potency_mode=="fixed_k" else None,
+#         init_seed=123,
+#         iters=iters,
+#         restarts=restarts,
+#         temp_init=1.0,
+#         temp_decay=0.995,
+#         move_probs=(0.3, 0.2, 0.3, 0.2),
+#         prune_eps=0.0,
+#         n_jobs=os.cpu_count(),   # or a smaller number if memory-bound
+#     )
+
+#     # ---- Pretty print inferred map ----
+#     print(f"\n=== BEST MAP for {folder} ===")
+#     multi_sorted = sorted(
+#         [P for P in bestF.Z_active if len(P) >= 2],
+#         key=lambda x: (len(x), tuple(sorted(list(x))))
+#     )
+#     print("Active potencies (multi-type):")
+#     for P in multi_sorted:
+#         print("  ", pot_str(P))
+#     print("Singletons (always active):")
+#     for t in S:
+#         print("  ", "{" + t + "}")
+
+#     print("\nEdges:")
+#     edges = sorted(
+#         [e for e, v in bestF.A.items() if v == 1],
+#         key=lambda e: (len(e[0]), len(e[1]), tuple(sorted(list(e[0]))), tuple(sorted(list(e[1]))))
+#     )
+#     for P, Q in edges:
+#         print(f"  {pot_str(P)} -> {pot_str(Q)}")
+
+#     print("\nScores:")
+#     print(f"  log posterior: {best_score:.6f}")
+#     for i, lg in enumerate(per_tree_logs, 1):
+#         print(f"  Tree {i} log P(T|F*): {lg:.6f}")
+
+#     # ---- Ground truth scoring ----
+#     predicted_sets = {p for p in bestF.Z_active if len(p) > 1}
+#     ground_truth_sets, gt_loss = score_given_map_and_trees(
+#         os.path.join(folder, "main.txt"),
+#         trees,
+#         meta_paths,
+#         fixed_k=priors.fixed_k
+#     )
+
+#     # print("\nPredicted Sets:")
+#     pretty_print_sets("Predicted Sets", predicted_sets)
+#     # print("\nGround Truth Sets:")
+#     pretty_print_sets("Ground Truth Sets", ground_truth_sets)
+
+#     # ---- Jaccard distance ----
+#     jd = jaccard_distance(predicted_sets, ground_truth_sets)
+#     print("\n=== Jaccard Distance ===")
+#     print(f"Jaccard Distance (Predicted vs Ground Truth): {jd:.6f}")
+#     print(f"Predicted map's loss: {best_score:.6f}")
+#     print(f"Ground truth's loss: {gt_loss:.6f}")
+
+#     return jd, gt_loss, best_score
+
+
+# def main(base_path="Data"):
+#     random.seed(7)
+#     # folders = ["0002","0003","0004","0005","0006","0007","0008","0009","0010","0011"]
+#     folders = ["0004"]
+#     # folders = ["0002", ]  # keep folder names as-is (no Data prefix)
+#     priors = Priors(potency_mode="fixed_k", fixed_k=5, rho=0.2)
+
+#     results = []
+
+#     for folder in folders:
+#         print(f"\n================= Processing folder {folder} =================")
+#         try:
+#             # prepend base_path when calling process_folder
+#             full_path = os.path.join(base_path, folder)
+#             jd, gt_loss, pred_loss = process_folder(
+#                 folder=full_path, priors=priors, iters=100, restarts=5
+#             )
+#             results.append((folder, jd, gt_loss, pred_loss))
+#         except Exception as e:
+#             print(f"  ERROR processing {folder}: {e}")
+#             results.append((folder, None, None, None))
+
+#     # ---- Print summary table ----
+#     print("\n================= Summary Table =================")
+#     print(f"{'Folder':<10} {'Jaccard Dist':<15} {'GT Loss':<15} {'Pred Loss':<15}")
+#     for folder, jd, gt_loss, pred_loss in results:
+#         if jd is None:
+#             print(f"{folder:<10} {'ERROR':<15} {'ERROR':<15} {'ERROR':<15}")
+#         else:
+#             print(f"{folder:<10} {jd:<15.6f} {gt_loss:<15.6f} {pred_loss:<15.6f}")
+
+#     # ---- Save summary to CSV ----
+#     output_file = "summary_results.csv"
+#     with open(output_file, mode="w", newline="") as f:
+#         writer = csv.writer(f)
+#         writer.writerow(["Folder", "Jaccard Distance", "Ground Truth Loss", "Predicted Map Loss"])
+#         for folder, jd, gt_loss, pred_loss in results:
+#             writer.writerow([folder, jd, gt_loss, pred_loss])
+
+#     print(f"\nSummary saved to {output_file}")
+
+def main_multi_type(type_nums=[6,10,14],
+                    maps_start=17, maps_end=26,
+                    cells_list=[50,100,200],
+                    out_csv="results_types_6_10_14_maps_17_26.csv",
+                    log_dir="logs_types"):
+
     random.seed(7)
-    # folders = ["0002","0003","0004","0005","0006","0007","0008","0009","0010","0011"]
-    folders = ["0004"]
-    # folders = ["0002", ]  # keep folder names as-is (no Data prefix)
     priors = Priors(potency_mode="fixed_k", fixed_k=5, rho=0.2)
-
     results = []
 
-    for folder in folders:
-        print(f"\n================= Processing folder {folder} =================")
-        try:
-            # prepend base_path when calling process_folder
-            full_path = os.path.join(base_path, folder)
-            jd, gt_loss, pred_loss = process_folder(
-                folder=full_path, priors=priors, iters=100, restarts=5
-            )
-            results.append((folder, jd, gt_loss, pred_loss))
-        except Exception as e:
-            print(f"  ERROR processing {folder}: {e}")
-            results.append((folder, None, None, None))
-
-    # ---- Print summary table ----
-    print("\n================= Summary Table =================")
-    print(f"{'Folder':<10} {'Jaccard Dist':<15} {'GT Loss':<15} {'Pred Loss':<15}")
-    for folder, jd, gt_loss, pred_loss in results:
-        if jd is None:
-            print(f"{folder:<10} {'ERROR':<15} {'ERROR':<15} {'ERROR':<15}")
-        else:
-            print(f"{folder:<10} {jd:<15.6f} {gt_loss:<15.6f} {pred_loss:<15.6f}")
-
-    # ---- Save summary to CSV ----
-    output_file = "summary_results.csv"
-    with open(output_file, mode="w", newline="") as f:
+    with open(out_csv, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["Folder", "Jaccard Distance", "Ground Truth Loss", "Predicted Map Loss"])
-        for folder, jd, gt_loss, pred_loss in results:
-            writer.writerow([folder, jd, gt_loss, pred_loss])
+        writer.writerow(["Type","MapIdx","Cells","Jaccard","GT Loss","Pred Loss"])
+        for t in type_nums:
+            for idx in range(maps_start, maps_end+1):
+                for cells in cells_list:
+                    try:
+                        jd, gt_loss, pred_loss = process_case(idx, t, cells, priors,
+                                                              iters=100, restarts=5, log_dir=log_dir)
+                        writer.writerow([t, idx, cells, f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}"])
+                        results.append((t, idx, cells, jd, gt_loss, pred_loss))
+                    except Exception as e:
+                        print(f"[WARN] Failed type_{t} map {idx:04d} cells_{cells}: {e}")
+                        writer.writerow([t, idx, cells, "ERROR","ERROR","ERROR"])
+                        results.append((t, idx, cells, None,None,None))
 
-    print(f"\nSummary saved to {output_file}")
-
+    print(f"\nSummary saved to {out_csv}")
+    print("\n================= Summary Table =================")
+    print(f"{'Type':<6} {'Map':<6} {'Cells':<7} {'Jaccard':<12} {'GT Loss':<14} {'Pred Loss':<14}")
+    for t, idx, cells, jd, gt, pr in results:
+        if jd is None:
+            print(f"{t:<6} {idx:<6} {cells:<7} {'ERROR':<12} {'ERROR':<14} {'ERROR':<14}")
+        else:
+            print(f"{t:<6} {idx:<6} {cells:<7} {jd:<12.6f} {gt:<14.6f} {pr:<14.6f}")
 
 if __name__ == "__main__":
-    main("Data")   # pass base directory here
+    main_multi_type(
+        type_nums=[6],
+        maps_start=17,
+        maps_end=26,
+        cells_list=[50],
+        out_csv="results_type6_50_cells.csv",
+        log_dir="logs_types"
+    )
+
+
+# if __name__ == "__main__":
+#     main("Data")   # pass base directory here
