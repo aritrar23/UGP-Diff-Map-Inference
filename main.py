@@ -2082,7 +2082,7 @@ def main_multi_type(type_nums=[6,10,14],
                 for cells in cells_list:
                     try:
                         jd, gt_loss, pred_loss = process_case(idx, t, cells, priors,
-                                                              iters=100, restarts=7, log_dir=log_dir)
+                                                              iters=5, restarts=7, log_dir=log_dir)
                         writer.writerow([t, idx, cells, f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}"])
                         results.append((t, idx, cells, jd, gt_loss, pred_loss))
                     except Exception as e:
@@ -2101,13 +2101,13 @@ def main_multi_type(type_nums=[6,10,14],
 
 if __name__ == "__main__":
     main_multi_type (
-        type_nums=[6],
+        type_nums=[10],
         maps_start=2,
-        maps_end=11,
-        cells_list=[200],
+        maps_end=2,
+        cells_list=[50],
         out_csv="cheking.csv",
         # out_csv = "cheking.csv",
-        log_dir=None
+        log_dir="logs_types"
     )
     # print(os.cpu_count());
 
