@@ -1140,8 +1140,8 @@ def map_search(
             aggregated_transitions, Z = init_progenitors_union_fitch(S, trees, leaf_type_maps, fixed_k)
             A = build_mid_sized_connected_dag(Z,keep_prob = 0.3,rng = None)
             # A = {}
-            print(f"Z:{Z}") 
-            print(f"A:{A}")
+            # print(f"Z:{Z}") 
+            # print(f"A:{A}")
             current = Structure(S, Z, A, unit_drop=unit_drop_edges)
             curr_score, _ = score_structure(current, trees, leaf_type_maps, priors, prune_eps)
             # print(curr_score)
@@ -2082,7 +2082,7 @@ def main_multi_type(type_nums=[6,10,14],
                 for cells in cells_list:
                     try:
                         jd, gt_loss, pred_loss = process_case(idx, t, cells, priors,
-                                                              iters=100, restarts=5, log_dir=log_dir)
+                                                              iters=100, restarts=7, log_dir=log_dir)
                         writer.writerow([t, idx, cells, f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}"])
                         results.append((t, idx, cells, jd, gt_loss, pred_loss))
                     except Exception as e:
@@ -2102,12 +2102,14 @@ def main_multi_type(type_nums=[6,10,14],
 if __name__ == "__main__":
     main_multi_type (
         type_nums=[6],
-        maps_start=17,
-        maps_end=26,
-        cells_list=[50],
-        out_csv="results_type6_50_cells.csv",
-        log_dir="logs_types"
+        maps_start=2,
+        maps_end=11,
+        cells_list=[200],
+        out_csv="cheking.csv",
+        # out_csv = "cheking.csv",
+        log_dir=None
     )
+    # print(os.cpu_count());
 
 #HI
 
