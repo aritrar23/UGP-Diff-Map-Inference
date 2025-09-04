@@ -1,0 +1,2 @@
+objective_score	model_runtime	k
+95.0	15.820639848709106	5

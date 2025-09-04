@@ -1,6 +1,6 @@
 === STDOUT ===
 Restricted license - for non-production use only - expires 2025-11-24
-Set parameter TimeLimit to value 300
+Set parameter TimeLimit to value 21600
 Gurobi Optimizer version 11.0.0 build v11.0.0rc2 (linux64 - "Ubuntu 22.04.5 LTS")
 
 CPU model: Intel(R) Core(TM) Ultra 7 155H, instruction set [SSE2|AVX|AVX2]
@@ -21,7 +21,7 @@ Variable types: 0 continuous, 165 integer (165 binary)
 Found heuristic solution: objective 1775.0000000
 Found heuristic solution: objective 1755.0000000
 
-Root relaxation: objective 0.000000e+00, 154 iterations, 0.01 seconds (0.00 work units)
+Root relaxation: objective 0.000000e+00, 154 iterations, 0.00 seconds (0.00 work units)
 
     Nodes    |    Current Node    |     Objective Bounds      |     Work
  Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
@@ -51,7 +51,7 @@ Cutting planes:
   RLT: 49
   BQP: 114
 
-Explored 53 nodes (4720 simplex iterations) in 0.35 seconds (0.17 work units)
+Explored 53 nodes (4720 simplex iterations) in 0.20 seconds (0.17 work units)
 Thread count was 22 (of 22 available processors)
 
 Solution count 8: 89 115 165 ... 1775

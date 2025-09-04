@@ -1,0 +1,269 @@
+=== STDOUT ===
+Set parameter Username
+Academic license - for non-commercial use only - expires 2026-09-01
+Set parameter TimeLimit to value 300
+Gurobi Optimizer version 11.0.0 build v11.0.0rc2 (linux64 - "Ubuntu 22.04.5 LTS")
+
+CPU model: Intel(R) Core(TM) Ultra 7 155H, instruction set [SSE2|AVX|AVX2]
+Thread count: 11 physical cores, 22 logical processors, using up to 22 threads
+
+Optimize a model with 523295 rows, 51447 columns and 1545131 nonzeros
+Model fingerprint: 0xe7cd5e2c
+Variable types: 24327 continuous, 27120 integer (27120 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 5e+02]
+  Objective range  [1e+00, 1e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 1e+00]
+Presolve removed 123712 rows and 8964 columns (presolve time = 22s) ...
+Presolve removed 123712 rows and 8964 columns (presolve time = 41s) ...
+Presolve removed 123712 rows and 8964 columns
+Presolve time: 42.89s
+Presolved: 399583 rows, 42483 columns, 1151553 nonzeros
+Variable types: 23211 continuous, 19272 integer (19272 binary)
+
+Deterministic concurrent LP optimizer: primal simplex, dual simplex, and barrier
+Showing barrier log only...
+
+Root relaxation presolved: 42483 rows, 442066 columns, 1194036 nonzeros
+
+Root barrier log...
+
+Ordering time: 0.06s
+
+Barrier statistics:
+ Free vars  : 2579
+ AA' NZ     : 6.516e+05
+ Factor NZ  : 4.225e+06 (roughly 230 MB of memory)
+ Factor Ops : 4.241e+08 (less than 1 second per iteration)
+ Threads    : 8
+
+                  Objective                Residual
+Iter       Primal          Dual         Primal    Dual     Compl     Time
+   0  -3.01944075e+06 -0.00000000e+00  1.63e+04 1.00e+00  2.68e+01    46s
+   1  -1.78538567e+06  6.95852247e+03  2.11e+03 1.25e+00  1.37e+01    46s
+   2  -1.19068737e+06  1.04154219e+04  4.96e+00 6.33e-01  5.07e+00    46s
+   3  -2.52771063e+05  9.96493025e+03  7.30e-11 7.46e-02  6.64e-01    46s
+   4  -3.69265863e+04  6.76636284e+03  8.01e-12 9.93e-06  9.44e-02    46s
+
+Barrier performed 4 iterations in 46.29 seconds (12.29 work units)
+Barrier solve interrupted - model solved by another algorithm
+
+Concurrent spin time: 0.47s (can be avoided by choosing Method=3)
+
+Solved with dual simplex
+
+Root relaxation: objective 0.000000e+00, 4201 iterations, 2.82 seconds (1.78 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0    0.00000    0   33          -    0.00000      -     -   53s
+H    0     0                    10005.000000    0.00000   100%     -   54s
+H    0     0                    9077.0000000    0.00000   100%     -   54s
+H    0     0                    7920.0000000    0.00000   100%     -   54s
+H    0     0                    6539.0000000    0.00000   100%     -   55s
+H    0     0                    6398.0000000    0.00000   100%     -   55s
+     0     0    0.00000    0   61 6398.00000    0.00000   100%     -   98s
+     0     0    0.00000    0   62 6398.00000    0.00000   100%     -  101s
+     0     0    0.00000    0   51 6398.00000    0.00000   100%     -  130s
+H    0     0                    6313.0000000    0.00000   100%     -  134s
+H    0     0                    6301.0000000    0.00000   100%     -  134s
+     0     0    0.00000    0   68 6301.00000    0.00000   100%     -  136s
+     0     0    0.00000    0   61 6301.00000    0.00000   100%     -  155s
+H    0     0                    5688.0000000    0.00000   100%     -  158s
+     0     0    0.00000    0   61 5688.00000    0.00000   100%     -  159s
+     0     0    0.00000    0   75 5688.00000    0.00000   100%     -  191s
+H    0     0                    5651.0000000    0.00000   100%     -  193s
+     0     0    0.00000    0   75 5651.00000    0.00000   100%     -  194s
+     0     0    0.00000    0   75 5651.00000    0.00000   100%     -  219s
+     0     0    0.00000    0   73 5651.00000    0.00000   100%     -  221s
+     0     0    0.00000    0   75 5651.00000    0.00000   100%     -  259s
+     0     0    0.00000    0   75 5651.00000    0.00000   100%     -  271s
+
+Cutting planes:
+  Gomory: 2
+  Cover: 2
+  MIR: 290
+  Flow cover: 3
+  RLT: 152
+  Relax-and-lift: 887
+
+Explored 1 nodes (43530 simplex iterations) in 300.02 seconds (429.51 work units)
+Thread count was 22 (of 22 available processors)
+
+Solution count 9: 5651 5688 6301 ... 10005
+
+Time limit reached
+Best objective 5.651000000000e+03, best bound 0.000000000000e+00, gap 100.0000%
+
+
+=== STDERR ===
+Traceback (most recent call last):
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 75, in attach
+    debugpy.listen(setup["address"])
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/public_api.py", line 47, in wrapper
+    return wrapped(*args, **kwargs)
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 133, in debug
+    log.reraise_exception("{0}() failed:", func.__name__, level="info")
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 131, in debug
+    return func(address, settrace_kwargs, **kwargs)
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 145, in listen
+    raise RuntimeError("debugpy.listen() has already been called on this process")
+RuntimeError: debugpy.listen() has already been called on this process
+E+00083.834: Traceback (most recent call last):
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 75, in attach
+                 debugpy.listen(setup["address"])
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/public_api.py", line 47, in wrapper
+                 return wrapped(*args, **kwargs)
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 133, in debug
+                 log.reraise_exception("{0}() failed:", func.__name__, level="info")
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 131, in debug
+                 return func(address, settrace_kwargs, **kwargs)
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 145, in listen
+                 raise RuntimeError("debugpy.listen() has already been called on this process")
+             RuntimeError: debugpy.listen() has already been called on this process
+             
+             Stack where logged:
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/bin/carta", line 8, in <module>
+                 sys.exit(main_cli())
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/carta/carta.py", line 176, in main_cli
+                 main(arguments)
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/carta/carta.py", line 152, in main
+                 solved_model = ilp.solve_large_k_problem(
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/carta/ilp.py", line 323, in solve_large_k_problem
+                 model.optimize()
+               File "<string>", line 1, in <module>
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 90, in attach
+                 log.reraise_exception()
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/common/log.py", line 222, in reraise_exception
+                 _exception(format_string, *args, **kwargs)
+             
+
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 90, in attach
+    log.reraise_exception()
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 75, in attach
+    debugpy.listen(setup["address"])
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/public_api.py", line 47, in wrapper
+    return wrapped(*args, **kwargs)
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 133, in debug
+    log.reraise_exception("{0}() failed:", func.__name__, level="info")
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 131, in debug
+    return func(address, settrace_kwargs, **kwargs)
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 145, in listen
+    raise RuntimeError("debugpy.listen() has already been called on this process")
+RuntimeError: debugpy.listen() has already been called on this process
+Traceback (most recent call last):
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 75, in attach
+    debugpy.listen(setup["address"])
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/public_api.py", line 47, in wrapper
+    return wrapped(*args, **kwargs)
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 133, in debug
+    log.reraise_exception("{0}() failed:", func.__name__, level="info")
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 131, in debug
+    return func(address, settrace_kwargs, **kwargs)
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 145, in listen
+    raise RuntimeError("debugpy.listen() has already been called on this process")
+RuntimeError: debugpy.listen() has already been called on this process
+E+00101.629: Traceback (most recent call last):
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 75, in attach
+                 debugpy.listen(setup["address"])
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/public_api.py", line 47, in wrapper
+                 return wrapped(*args, **kwargs)
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 133, in debug
+                 log.reraise_exception("{0}() failed:", func.__name__, level="info")
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 131, in debug
+                 return func(address, settrace_kwargs, **kwargs)
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 145, in listen
+                 raise RuntimeError("debugpy.listen() has already been called on this process")
+             RuntimeError: debugpy.listen() has already been called on this process
+             
+             Stack where logged:
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/bin/carta", line 8, in <module>
+                 sys.exit(main_cli())
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/carta/carta.py", line 176, in main_cli
+                 main(arguments)
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/carta/carta.py", line 152, in main
+                 solved_model = ilp.solve_large_k_problem(
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/carta/ilp.py", line 323, in solve_large_k_problem
+                 model.optimize()
+               File "<string>", line 1, in <module>
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 90, in attach
+                 log.reraise_exception()
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/common/log.py", line 222, in reraise_exception
+                 _exception(format_string, *args, **kwargs)
+             
+
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 90, in attach
+    log.reraise_exception()
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 75, in attach
+    debugpy.listen(setup["address"])
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/public_api.py", line 47, in wrapper
+    return wrapped(*args, **kwargs)
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 133, in debug
+    log.reraise_exception("{0}() failed:", func.__name__, level="info")
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 131, in debug
+    return func(address, settrace_kwargs, **kwargs)
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 145, in listen
+    raise RuntimeError("debugpy.listen() has already been called on this process")
+RuntimeError: debugpy.listen() has already been called on this process
+Traceback (most recent call last):
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 75, in attach
+    debugpy.listen(setup["address"])
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/public_api.py", line 47, in wrapper
+    return wrapped(*args, **kwargs)
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 133, in debug
+    log.reraise_exception("{0}() failed:", func.__name__, level="info")
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 131, in debug
+    return func(address, settrace_kwargs, **kwargs)
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 145, in listen
+    raise RuntimeError("debugpy.listen() has already been called on this process")
+RuntimeError: debugpy.listen() has already been called on this process
+E+00221.130: Traceback (most recent call last):
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 75, in attach
+                 debugpy.listen(setup["address"])
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/public_api.py", line 47, in wrapper
+                 return wrapped(*args, **kwargs)
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 133, in debug
+                 log.reraise_exception("{0}() failed:", func.__name__, level="info")
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 131, in debug
+                 return func(address, settrace_kwargs, **kwargs)
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 145, in listen
+                 raise RuntimeError("debugpy.listen() has already been called on this process")
+             RuntimeError: debugpy.listen() has already been called on this process
+             
+             Stack where logged:
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/bin/carta", line 8, in <module>
+                 sys.exit(main_cli())
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/carta/carta.py", line 176, in main_cli
+                 main(arguments)
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/carta/carta.py", line 152, in main
+                 solved_model = ilp.solve_large_k_problem(
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/carta/ilp.py", line 323, in solve_large_k_problem
+                 model.optimize()
+               File "<string>", line 1, in <module>
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 90, in attach
+                 log.reraise_exception()
+               File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/common/log.py", line 222, in reraise_exception
+                 _exception(format_string, *args, **kwargs)
+             
+
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 90, in attach
+    log.reraise_exception()
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/attach_pid_injected.py", line 75, in attach
+    debugpy.listen(setup["address"])
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/public_api.py", line 47, in wrapper
+    return wrapped(*args, **kwargs)
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 133, in debug
+    log.reraise_exception("{0}() failed:", func.__name__, level="info")
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 131, in debug
+    return func(address, settrace_kwargs, **kwargs)
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/debugpy/server/api.py", line 145, in listen
+    raise RuntimeError("debugpy.listen() has already been called on this process")
+RuntimeError: debugpy.listen() has already been called on this process

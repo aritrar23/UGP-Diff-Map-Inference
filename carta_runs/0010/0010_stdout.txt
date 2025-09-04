@@ -1,6 +1,6 @@
 === STDOUT ===
 Restricted license - for non-production use only - expires 2025-11-24
-Set parameter TimeLimit to value 300
+Set parameter TimeLimit to value 21600
 Gurobi Optimizer version 11.0.0 build v11.0.0rc2 (linux64 - "Ubuntu 22.04.5 LTS")
 
 CPU model: Intel(R) Core(TM) Ultra 7 155H, instruction set [SSE2|AVX|AVX2]
@@ -16,7 +16,7 @@ Coefficient statistics:
   RHS range        [1e+00, 2e+00]
 Found heuristic solution: objective 1724.0000000
 Presolve removed 534 rows and 78 columns
-Presolve time: 0.01s
+Presolve time: 0.00s
 Presolved: 697 rows, 158 columns, 1905 nonzeros
 Variable types: 0 continuous, 158 integer (158 binary)
 
@@ -53,7 +53,7 @@ Cutting planes:
   RLT: 46
   BQP: 103
 
-Explored 86 nodes (4701 simplex iterations) in 0.28 seconds (0.14 work units)
+Explored 86 nodes (4701 simplex iterations) in 0.17 seconds (0.14 work units)
 Thread count was 22 (of 22 available processors)
 
 Solution count 9: 239 276 396 ... 1724

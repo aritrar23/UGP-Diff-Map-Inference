@@ -1,0 +1,94 @@
+=== STDOUT ===
+Set parameter Username
+Academic license - for non-commercial use only - expires 2026-09-01
+Set parameter TimeLimit to value 300
+Gurobi Optimizer version 11.0.0 build v11.0.0rc2 (linux64 - "Ubuntu 22.04.5 LTS")
+
+CPU model: Intel(R) Core(TM) Ultra 7 155H, instruction set [SSE2|AVX|AVX2]
+Thread count: 11 physical cores, 22 logical processors, using up to 22 threads
+
+Optimize a model with 446874 rows, 43999 columns and 1320534 nonzeros
+Model fingerprint: 0x9a50db95
+Variable types: 20799 continuous, 23200 integer (23200 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 5e+02]
+  Objective range  [1e+00, 1e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 1e+00]
+Presolve removed 96146 rows and 6770 columns (presolve time = 13s) ...
+Presolve removed 96146 rows and 6770 columns (presolve time = 23s) ...
+Presolve removed 96146 rows and 6770 columns
+Presolve time: 24.33s
+Presolved: 350728 rows, 37229 columns, 1050374 nonzeros
+Variable types: 20088 continuous, 17141 integer (17141 binary)
+
+Deterministic concurrent LP optimizer: primal simplex, dual simplex, and barrier
+Showing barrier log only...
+
+Root relaxation presolved: 37229 rows, 387957 columns, 1087603 nonzeros
+
+Root barrier log...
+
+Ordering time: 0.06s
+
+Barrier statistics:
+ Free vars  : 2232
+ AA' NZ     : 5.812e+05
+ Factor NZ  : 3.725e+06 (roughly 200 MB of memory)
+ Factor Ops : 3.764e+08 (less than 1 second per iteration)
+ Threads    : 8
+
+                  Objective                Residual
+Iter       Primal          Dual         Primal    Dual     Compl     Time
+   0  -1.07315419e+06 -0.00000000e+00  1.67e+04 1.00e+00  1.13e+01    27s
+   1  -6.07112458e+05  3.27061783e+03  4.16e+03 7.84e-01  5.59e+00    27s
+   2  -4.08591047e+05  8.93324445e+03  3.14e-11 9.58e-01  2.50e+00    28s
+   3  -1.18001630e+05  7.45561729e+03  2.25e-10 1.07e-01  3.79e-01    28s
+   4  -3.99530644e+04  4.58717097e+03  1.21e-10 2.27e-02  1.17e-01    28s
+
+Barrier performed 4 iterations in 27.93 seconds (9.80 work units)
+Barrier solve interrupted - model solved by another algorithm
+
+Concurrent spin time: 0.33s (can be avoided by choosing Method=3)
+
+Solved with dual simplex
+
+Root relaxation: objective 0.000000e+00, 3624 iterations, 3.00 seconds (1.62 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0    0.00000    0   33          -    0.00000      -     -   35s
+H    0     0                    8664.0000000    0.00000   100%     -   35s
+H    0     0                    8660.0000000    0.00000   100%     -   36s
+H    0     0                    3564.0000000    0.00000   100%     -   51s
+     0     0    0.00000    0   75 3564.00000    0.00000   100%     -   70s
+H    0     0                    1984.0000000    0.00000   100%     -   72s
+     0     0    0.00000    0   77 1984.00000    0.00000   100%     -  105s
+H    0     0                    1975.0000000    0.00000   100%     -  108s
+     0     0    0.00000    0   77 1975.00000    0.00000   100%     -  109s
+     0     0    0.00000    0   75 1975.00000    0.00000   100%     -  135s
+H    0     0                    1793.0000000    0.00000   100%     -  137s
+     0     0    0.00000    0   77 1793.00000    0.00000   100%     -  139s
+     0     0    0.00000    0   78 1793.00000    0.00000   100%     -  160s
+H    0     0                    1749.0000000    0.00000   100%     -  163s
+     0     0    0.00000    0   77 1749.00000    0.00000   100%     -  164s
+     0     0    0.00000    0   78 1749.00000    0.00000   100%     -  188s
+
+Cutting planes:
+  Gomory: 1
+  MIR: 82
+  Flow cover: 1
+  RLT: 199
+  Relax-and-lift: 1820
+
+Explored 1 nodes (46354 simplex iterations) in 1012.96 seconds (308.11 work units)
+Thread count was 22 (of 22 available processors)
+
+Solution count 7: 1749 1793 1975 ... 8664
+
+Time limit reached
+Best objective 1.749000000000e+03, best bound 0.000000000000e+00, gap 100.0000%
+
+
+=== STDERR ===

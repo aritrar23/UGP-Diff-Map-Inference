@@ -1,0 +1,90 @@
+=== STDOUT ===
+Set parameter Username
+Academic license - for non-commercial use only - expires 2026-09-01
+Set parameter TimeLimit to value 300
+Gurobi Optimizer version 11.0.0 build v11.0.0rc2 (linux64 - "Ubuntu 22.04.5 LTS")
+
+CPU model: Intel(R) Core(TM) Ultra 7 155H, instruction set [SSE2|AVX|AVX2]
+Thread count: 11 physical cores, 22 logical processors, using up to 22 threads
+
+Optimize a model with 108874 rows, 17355 columns and 313638 nonzeros
+Model fingerprint: 0xb34783f6
+Variable types: 7875 continuous, 9480 integer (9480 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 3e+01]
+  Objective range  [1e+00, 1e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 1e+00]
+Presolve removed 38372 rows and 4338 columns
+Presolve time: 1.04s
+Presolved: 70502 rows, 13017 columns, 198862 nonzeros
+Variable types: 7300 continuous, 5717 integer (5717 binary)
+Found heuristic solution: objective 6081.0000000
+Found heuristic solution: objective 6077.0000000
+
+Deterministic concurrent LP optimizer: primal and dual simplex (primal and dual model)
+Showing primal log only...
+
+Root relaxation presolved: 70502 rows, 13017 columns, 198862 nonzeros
+
+Concurrent spin time: 0.06s
+
+Solved with primal simplex
+
+Root relaxation: objective 0.000000e+00, 2335 iterations, 0.33 seconds (0.29 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0    0.00000    0   12 6077.00000    0.00000   100%     -    4s
+H    0     0                     199.0000000    0.00000   100%     -    4s
+H    0     0                     186.0000000    0.00000   100%     -    4s
+H    0     0                     113.0000000    0.00000   100%     -    4s
+     0     0    0.00000    0   22  113.00000    0.00000   100%     -    6s
+     0     0   21.33333    0   24  113.00000   21.33333  81.1%     -    9s
+     0     0   23.75000    0   25  113.00000   23.75000  79.0%     -   10s
+     0     0   25.00000    0   37  113.00000   25.00000  77.9%     -   11s
+     0     0   25.50000    0   37  113.00000   25.50000  77.4%     -   12s
+     0     0   25.83333    0   46  113.00000   25.83333  77.1%     -   12s
+     0     0   25.83333    0   46  113.00000   25.83333  77.1%     -   12s
+     0     0   28.00000    0   86  113.00000   28.00000  75.2%     -   14s
+     0     0   29.16667    0   83  113.00000   29.16667  74.2%     -   15s
+     0     0   29.33333    0   82  113.00000   29.33333  74.0%     -   15s
+     0     0   29.50000    0   87  113.00000   29.50000  73.9%     -   15s
+     0     0   29.83333    0   87  113.00000   29.83333  73.6%     -   15s
+     0     0   31.50000    0   90  113.00000   31.50000  72.1%     -   16s
+     0     0   31.66667    0   88  113.00000   31.66667  72.0%     -   17s
+     0     0   31.66667    0   93  113.00000   31.66667  72.0%     -   17s
+     0     0   31.66667    0   98  113.00000   31.66667  72.0%     -   17s
+     0     0   31.66667    0   93  113.00000   31.66667  72.0%     -   17s
+     0     0   33.50000    0  142  113.00000   33.50000  70.4%     -   19s
+     0     0   33.50000    0  141  113.00000   33.50000  70.4%     -   20s
+     0     2   33.50000    0  139  113.00000   33.50000  70.4%     -   23s
+     5     8   33.50000    3  147  113.00000   33.50000  70.4%  2771   25s
+H   28    24                      94.0000000   33.50000  64.4%  2038   32s
+    50    33   89.16304    7  166   94.00000   33.50000  64.4%  1990   35s
+    74    35   81.19551    9  182   94.00000   33.50000  64.4%  1559   40s
+   141    51   67.24158    7  254   94.00000   33.50000  64.4%  1058   45s
+   168    47   80.08333    8  197   94.00000   33.50000  64.4%   910   57s
+   372    29   84.50000   10  182   94.00000   39.65625  57.8%   474   60s
+
+Cutting planes:
+  Gomory: 2
+  Cover: 6
+  Implied bound: 32
+  Clique: 1
+  MIR: 627
+  Flow cover: 38
+  RLT: 176
+  Relax-and-lift: 2
+
+Explored 559 nodes (228522 simplex iterations) in 61.32 seconds (114.60 work units)
+Thread count was 22 (of 22 available processors)
+
+Solution count 6: 94 113 186 ... 6081
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 9.400000000000e+01, best bound 9.400000000000e+01, gap 0.0000%
+
+
+=== STDERR ===
