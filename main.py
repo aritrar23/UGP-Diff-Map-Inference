@@ -2,9 +2,13 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import os
 import random
 import csv
-from typing import Iterable, Tuple, List, Optional
+import json
+import math
+import itertools
+from typing import Iterable,  Dict, Tuple, List, Optional, Set, FrozenSet
 from collections import Counter, defaultdict
 from tqdm import trange
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -20,12 +24,6 @@ p ~ Beta(1,1) is integrated out exactly.
 - Priors: fixed-k (uniform over potency sets) OR Bernoulli(pi_P); edges Bernoulli(rho)
 - Stochastic hill-climb + simulated annealing over F=(Z,A)
 """
-
-import math
-import random
-import itertools
-from collections import defaultdict
-from typing import Dict, Tuple, List, Optional, Set, FrozenSet
 
 # ----------------------------
 # Tree structures and Newick
@@ -1137,6 +1135,7 @@ def map_search(
         # fallback: if invalid, keep sampling until valid
         attempts = 0
         while not math.isfinite(curr_score) and attempts < 720:
+            print(f"This is attempt number: {attempts}")
             aggregated_transitions, Z = init_progenitors_union_fitch(S, trees, leaf_type_maps, fixed_k)
             A = build_mid_sized_connected_dag(Z,keep_prob = 0.3,rng = None)
             # A = {}
@@ -1287,11 +1286,6 @@ def map_search_parallel(
                 best_global, best_score, best_logs = bestF, score, logs
 
     return best_global, best_score, best_logs
-
-
-import os
-import csv
-import json
 
 def read_leaf_type_map(path: str) -> Dict[str, str]:
     """
@@ -1794,25 +1788,52 @@ import csv
 from typing import List
 
 
-def build_fate_map_path(map_idx: int, type_num: int) -> Tuple[str, str]:
+# def build_fate_map_path(map_idx: int, type_num: int) -> Tuple[str, str]:
+#     idx4 = f"{map_idx:04d}"
+#     fate_map_path = os.path.join(
+#         "inputs", "differentiation_maps", "graph", f"type_{type_num}",
+#         f"graph_fate_map{idx4}.txt"
+#     )
+#     if not os.path.exists(fate_map_path):
+#         raise FileNotFoundError(f"Missing fate map: {fate_map_path}")
+#     return fate_map_path, idx4
+
+def build_fate_map_path(map_idx: int, type_num: int, tree_kind: str = "graph") -> Tuple[str, str]:
+    assert tree_kind in {"graph", "poly_tree", "bin_tree"}
     idx4 = f"{map_idx:04d}"
     fate_map_path = os.path.join(
-        "inputs", "differentiation_maps", "graph", f"type_{type_num}",
+        "inputs", "differentiation_maps", tree_kind, f"type_{type_num}",
         f"graph_fate_map{idx4}.txt"
     )
     if not os.path.exists(fate_map_path):
-        raise FileNotFoundError(f"Missing fate map: {fate_map_path}")
+        raise FileNotFoundError(f"[fate-map] Not found: {fate_map_path}")
+    print(f"[paths] fate_map_path = {fate_map_path}")
     return fate_map_path, idx4
 
-def build_tree_and_meta_paths(map_idx: int, type_num: int, cells_n: int) -> Tuple[List[str], List[str]]:
+
+# def build_tree_and_meta_paths(map_idx: int, type_num: int, cells_n: int) -> Tuple[List[str], List[str]]:
+#     idx4 = f"{map_idx:04d}"
+#     folder = os.path.join("inputs", "trees", "graph", f"type_{type_num}", f"cells_{cells_n}")
+#     tree_paths = [os.path.join(folder, f"{idx4}_tree_{i}.txt") for i in range(5)]
+#     meta_paths = [os.path.join(folder, f"{idx4}_meta_{i}.txt") for i in range(5)]
+#     for p in tree_paths + meta_paths:
+#         if not os.path.exists(p):
+#             raise FileNotFoundError(f"Expected file not found: {p}")
+#     return tree_paths, meta_paths
+
+def build_tree_and_meta_paths(map_idx: int, type_num: int, cells_n: int, tree_kind: str = "graph") -> Tuple[List[str], List[str]]:
+    assert tree_kind in {"graph", "poly_tree", "bin_tree"}
     idx4 = f"{map_idx:04d}"
-    folder = os.path.join("inputs", "trees", "graph", f"type_{type_num}", f"cells_{cells_n}")
+    folder = os.path.join("inputs", "trees", tree_kind, f"type_{type_num}", f"cells_{cells_n}")
     tree_paths = [os.path.join(folder, f"{idx4}_tree_{i}.txt") for i in range(5)]
     meta_paths = [os.path.join(folder, f"{idx4}_meta_{i}.txt") for i in range(5)]
-    for p in tree_paths + meta_paths:
-        if not os.path.exists(p):
-            raise FileNotFoundError(f"Expected file not found: {p}")
+    missing = [p for p in (tree_paths + meta_paths) if not os.path.exists(p)]
+    if missing:
+        raise FileNotFoundError("[trees/meta] Missing files:\n  " + "\n  ".join(missing))
+    print("[paths] tree_paths:");  [print("   ", p) for p in tree_paths]
+    print("[paths] meta_paths:");  [print("   ", p) for p in meta_paths]
     return tree_paths, meta_paths
+
 
 def read_trees_and_maps(tree_paths: List[str], meta_paths: List[str]):
     """
@@ -1846,14 +1867,26 @@ def pretty_print_sets(name, sets):
 
 # --- CASE RUNNER ---
 
-def process_case(map_idx: int, type_num: int, cells_n: int,
-                 priors, iters=100, restarts=5, log_dir: Optional[str]=None):
+# def process_case(map_idx: int, type_num: int, cells_n: int,
+#                  priors, iters=100, restarts=5, log_dir: Optional[str]=None):
 
-    fate_map_path, idx4 = build_fate_map_path(map_idx, type_num)
-    tree_paths, meta_paths = build_tree_and_meta_paths(map_idx, type_num, cells_n)
+#     fate_map_path, idx4 = build_fate_map_path(map_idx, type_num)
+#     tree_paths, meta_paths = build_tree_and_meta_paths(map_idx, type_num, cells_n)
+
+
+def process_case(map_idx: int, type_num: int, cells_n: int,
+                 priors, iters=100, restarts=5, log_dir: Optional[str]=None,
+                 tree_kind: str = "graph", n_jobs: Optional[int] = None):
+    # Resolve and validate all inputs (will print what it tries)
+    fate_map_path, idx4 = build_fate_map_path(map_idx, type_num, tree_kind=tree_kind)
+    tree_paths, meta_paths = build_tree_and_meta_paths(map_idx, type_num, cells_n, tree_kind=tree_kind)
 
     # load trees + maps
     trees, leaf_type_maps, S = read_trees_and_maps(tree_paths, meta_paths)
+
+    # default: single-process on Windows for easier debugging (you can bump later)
+    # if n_jobs is None:
+    #     n_jobs = 1
 
     # run MAP search
     bestF, best_score, per_tree_logs = map_search_parallel(
@@ -1870,8 +1903,36 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
         temp_decay=0.995,
         move_probs=(0.3, 0.2, 0.3, 0.2),
         prune_eps=0.0,
-        n_jobs=os.cpu_count()
+        n_jobs=n_jobs
     )
+
+# def process_case(map_idx: int, type_num: int, cells_n: int,
+#                  priors, iters=100, restarts=5, log_dir: Optional[str]=None,
+#                  tree_kind: str = "graph"):
+
+#     fate_map_path, idx4 = build_fate_map_path(map_idx, type_num, tree_kind=tree_kind)
+#     tree_paths, meta_paths = build_tree_and_meta_paths(map_idx, type_num, cells_n, tree_kind=tree_kind)
+
+#     # load trees + maps
+#     trees, leaf_type_maps, S = read_trees_and_maps(tree_paths, meta_paths)
+
+#     # run MAP search
+#     bestF, best_score, per_tree_logs = map_search_parallel(
+#         S=S,
+#         trees=trees,
+#         leaf_type_maps=leaf_type_maps,
+#         priors=priors,
+#         unit_drop_edges=False,
+#         fixed_k=priors.fixed_k if priors.potency_mode=="fixed_k" else None,
+#         init_seed=123,
+#         iters=iters,
+#         restarts=restarts,
+#         temp_init=1.0,
+#         temp_decay=0.995,
+#         move_probs=(0.3, 0.2, 0.3, 0.2),
+#         prune_eps=0.0,
+#         n_jobs=os.cpu_count()
+#     )
 
     # --- Pretty print inferred map ---
     print(f"\n=== BEST MAP for type_{type_num}, map {idx4}, cells_{cells_n} ===")
@@ -1894,9 +1955,14 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
 
     # --- Ground truth scoring ---
     predicted_sets = {p for p in bestF.Z_active if len(p) > 1}
+
     ground_truth_sets, gt_loss = score_given_map_and_trees(
         fate_map_path, trees, meta_paths, fixed_k=priors.fixed_k
     )
+
+    # ground_truth_sets, gt_loss = score_given_map_and_trees(
+    #     fate_map_path, trees, meta_paths, fixed_k=priors.fixed_k
+    # )
 
     pretty_print_sets("Predicted Sets", predicted_sets)
     pretty_print_sets("Ground Truth Sets", ground_truth_sets)
@@ -2064,31 +2130,62 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
 
 #     print(f"\nSummary saved to {output_file}")
 
+import traceback
+
 def main_multi_type(type_nums=[6,10,14],
                     maps_start=17, maps_end=26,
                     cells_list=[50,100,200],
                     out_csv="results_types_6_10_14_maps_17_26.csv",
-                    log_dir="logs_types"):
-
+                    log_dir="logs_types",
+                    tree_kind: str = "graph"):
     random.seed(7)
-    priors = Priors(potency_mode="fixed_k", fixed_k=5, rho=0.2)
+    priors = Priors(potency_mode="fixed_k", fixed_k=7, rho=0.2)
     results = []
 
     with open(out_csv, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["Type","MapIdx","Cells","Jaccard","GT Loss","Pred Loss"])
+
         for t in type_nums:
             for idx in range(maps_start, maps_end+1):
                 for cells in cells_list:
                     try:
-                        jd, gt_loss, pred_loss = process_case(idx, t, cells, priors,
-                                                              iters=5, restarts=7, log_dir=log_dir)
+                        jd, gt_loss, pred_loss = process_case(
+                            idx, t, cells, priors,
+                            iters=100, restarts=7, log_dir=log_dir,
+                            tree_kind=tree_kind, n_jobs= os.cpu_count()-1  # start single-process
+                        )
                         writer.writerow([t, idx, cells, f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}"])
                         results.append((t, idx, cells, jd, gt_loss, pred_loss))
                     except Exception as e:
-                        print(f"[WARN] Failed type_{t} map {idx:04d} cells_{cells}: {e}")
+                        print(f"[WARN] Failed type_{t} map {idx:04d} cells_{cells}: {repr(e)}")
+                        traceback.print_exc()
                         writer.writerow([t, idx, cells, "ERROR","ERROR","ERROR"])
                         results.append((t, idx, cells, None,None,None))
+
+
+# def main_multi_type(type_nums=[6,10,14],
+#                     maps_start=17, maps_end=26,
+#                     cells_list=[50,100,200],
+#                     out_csv="results_types_6_10_14_maps_17_26.csv",
+#                     log_dir="logs_types"):
+
+    
+        # for t in type_nums:
+        #     for idx in range(maps_start, maps_end+1):
+        #         for cells in cells_list:
+        #             try:
+        #                 jd, gt_loss, pred_loss = process_case(idx, t, cells, priors,
+        #                                                       iters=5, restarts=7, log_dir=log_dir,
+        #                                                       tree_kind=tree_kind)
+        #                 # jd, gt_loss, pred_loss = process_case(idx, t, cells, priors,
+        #                 #                                       iters=5, restarts=7, log_dir=log_dir)
+        #                 writer.writerow([t, idx, cells, f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}"])
+        #                 results.append((t, idx, cells, jd, gt_loss, pred_loss))
+        #             except Exception as e:
+        #                 print(f"[WARN] Failed type_{t} map {idx:04d} cells_{cells}: {e}")
+        #                 writer.writerow([t, idx, cells, "ERROR","ERROR","ERROR"])
+        #                 results.append((t, idx, cells, None,None,None))
 
     print(f"\nSummary saved to {out_csv}")
     print("\n================= Summary Table =================")
@@ -2100,15 +2197,16 @@ def main_multi_type(type_nums=[6,10,14],
             print(f"{t:<6} {idx:<6} {cells:<7} {jd:<12.6f} {gt:<14.6f} {pr:<14.6f}")
 
 if __name__ == "__main__":
-    main_multi_type (
-        type_nums=[10],
-        maps_start=2,
-        maps_end=2,
+    main_multi_type(
+        type_nums=[8],
+        maps_start=24,
+        maps_end=26,
         cells_list=[50],
-        out_csv="cheking.csv",
-        # out_csv = "cheking.csv",
-        log_dir="logs_types"
+        out_csv="results_type6_bin_tree_50_17_26.csv",
+        log_dir="logs_types",
+        tree_kind="bin_tree"   # or "bin_trees" or "graph"
     )
+
     # print(os.cpu_count());
 
 #HI
