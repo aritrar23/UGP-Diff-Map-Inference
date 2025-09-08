@@ -12,6 +12,7 @@ from typing import Iterable,  Dict, Tuple, List, Optional, Set, FrozenSet
 from collections import Counter, defaultdict
 from tqdm import trange
 import traceback
+from functools import lru_cache
 
 
 #!/usr/bin/env python3
@@ -1099,6 +1100,112 @@ def score_structure(struct: Structure,
     return logp + sum(logLs), logLs
 
 
+def _struct_from_Z(S, Z_active, unit_drop_edges=True, keep_prob=0.30, rng=None):
+    if rng is None: rng = random.Random()
+    Z_full = set(Z_active) | {frozenset([t]) for t in S}
+    A0 = build_mid_sized_connected_dag(Z_full, keep_prob=keep_prob, unit_drop=unit_drop_edges, rng=rng)
+    return Structure(S=S, Z_active=Z_full, A=A0, unit_drop=unit_drop_edges)
+
+def score_given_Z(
+    Z_active, S, trees, leaf_type_maps, priors,
+    unit_drop_edges=True, add_steps=10, rm_steps=5, keep_prob=0.30,
+    show_edge_repair=True
+):
+    # Build from Z
+    struct = _struct_from_Z(S, Z_active, unit_drop_edges, keep_prob=keep_prob)
+    # Quick local edge search with bars
+    struct = _greedy_edge_repair(
+        struct, trees, leaf_type_maps, priors,
+        add_steps=add_steps, rm_steps=rm_steps, show_edge_repair=show_edge_repair
+    )
+    # Score
+    best_score, _ = score_structure(struct, trees, leaf_type_maps, priors, prune_eps=0.0)
+    return struct, best_score
+
+
+from tqdm import tqdm, trange
+
+def _greedy_edge_repair(
+    struct,
+    trees, leaf_type_maps, priors,
+    add_steps=10, rm_steps=5,
+    show_edge_repair=True
+):
+    """Small local optimizer on edges with detailed bars."""
+    def score(s):
+        sc,_ = score_structure(s, trees, leaf_type_maps, priors, prune_eps=0.0)
+        return sc
+
+    # --- Add best missing edges ---
+    add_iter = range(add_steps)
+    if show_edge_repair:
+        add_iter = trange(add_steps, desc="    repair:add-best", leave=False)
+    for _ in add_iter:
+        best_e = None; best_sc = -1e300; tried = 0
+        # one pass over all admissible missing edges
+        pairs = [(P,Q) for (P,Q) in struct.all_edge_pairs() if struct.A.get((P,Q),0)==0]
+        # small inner bar
+        inner = pairs if not show_edge_repair else tqdm(pairs, desc="      try add", leave=False)
+        for (P,Q) in inner:
+            tried += 1
+            tmp = struct.clone()
+            tmp.A[(P,Q)] = 1
+            tmp.recompute_reach()
+            sc = score(tmp)
+            if sc > best_sc:
+                best_sc, best_e = sc, (P,Q)
+        if best_e is None:
+            break
+        struct.A[best_e] = 1
+        struct.recompute_reach()
+
+    # --- Remove worst existing edges ---
+    rm_iter = range(rm_steps)
+    if show_edge_repair:
+        rm_iter = trange(rm_steps, desc="    repair:rm-worst", leave=False)
+    for _ in rm_iter:
+        worst_e = None; worst_sc = 1e300
+        edges = [e for e,v in struct.A.items() if v==1]
+        inner = edges if not show_edge_repair else tqdm(edges, desc="      try rm", leave=False)
+        for e in inner:
+            tmp = struct.clone()
+            del tmp.A[e]
+            tmp.recompute_reach()
+            sc = score(tmp)
+            if sc < worst_sc:
+                worst_sc, worst_e = sc, e
+        if worst_e is None:
+            break
+        del struct.A[worst_e]
+        struct.recompute_reach()
+
+    return struct
+
+
+@lru_cache(maxsize=4096)
+def _score_Z_keyed(Z_key, S_tuple, unit_drop_edges, add_steps, rm_steps, rho, fixed_k):
+    """Cache wrapper for score_given_Z to avoid rescoring same Z repeatedly."""
+    # NOTE: This function is only for caching; actual scoring requires closures.
+    # It will be called via score_given_Z which closes over trees/maps/priors.
+    # We just keep the key semantics consistent.
+    return None  # placeholder to reserve the cache signature
+
+# def score_given_Z(Z_active, S, trees, leaf_type_maps, priors,
+#                   unit_drop_edges=True, add_steps=10, rm_steps=5, keep_prob=0.30):
+#     """
+#     Given a potency set Z (must include multis only; singletons are auto-added),
+#     build a seed A, repair edges greedily, and return (best_struct, score).
+#     """
+#     # Build from Z
+#     struct = _struct_from_Z(S, Z_active, unit_drop_edges, keep_prob=keep_prob)
+#     # Quick local edge search
+#     struct = _greedy_edge_repair(struct, trees, leaf_type_maps, priors, add_steps=add_steps, rm_steps=rm_steps)
+#     # Score
+#     best_score, _ = score_structure(struct, trees, leaf_type_maps, priors, prune_eps=0.0)
+#     return struct, best_score
+
+
+
 
 # ----------------------------
 # Annealed stochastic search
@@ -1131,6 +1238,139 @@ def fitch_potency_probs_dict(
         return {}  # no signal; caller should handle smoothing
 
     return {P: row_sum[P] / total for P in row_sum}
+
+def map_search_Z_beam(
+    S, trees, leaf_type_maps, priors, k,
+    beam_width=128, layers=120, cand_pool=200,
+    add_steps=10, rm_steps=5, unit_drop_edges=True, keep_prob=0.30,
+    seed=0,
+    show_progress=True,
+    show_parent_bars=True,       # show a bar per beam parent
+    show_candidate_bars=True,    # show a bar over all P/Q swaps for that parent
+    show_edge_repair=True        # show add/remove bars inside repair
+):
+    rng = random.Random(seed)
+
+    # --- Build candidate universe (Fitch + observed)
+    fitch_probs = compute_fitch_potency_probs(S, trees, leaf_type_maps)
+    fitch_sorted = [P for (P,_) in fitch_probs if len(P) >= 2]
+    fitch_pool = set(fitch_sorted[:cand_pool])
+
+    observed = set()
+    for t, ltm in zip(trees, leaf_type_maps):
+        assign_union_potency(t, ltm)
+        observed |= _collect_potencies_in_tree(t)
+    observed = {P for P in observed if len(P) >= 2}
+    Q_universe = list(fitch_pool | observed)
+
+    # --- Initial Z from Fitch init (ensure exactly k multis)
+    _, Z0_full = init_progenitors_union_fitch(S, trees, leaf_type_maps, k)
+    Z0 = {P for P in Z0_full if len(P) >= 2}
+    if len(Z0) < k:
+        for q in fitch_sorted:
+            if len(Z0) >= k: break
+            if q not in Z0: Z0.add(q)
+    elif len(Z0) > k:
+        Z0 = set(list(Z0)[:k])
+
+    # --- caching and keys
+    def Z_key(Z): return tuple(sorted(tuple(sorted(list(p))) for p in Z))
+    cache = {}
+    cache_hits = 0
+    cache_misses = 0
+
+    def scoreZ(Z):
+        nonlocal cache_hits, cache_misses
+        key = Z_key(Z)
+        if key in cache:
+            cache_hits += 1
+            return cache[key]
+        cache_misses += 1
+        struct, sc = score_given_Z(
+            Z_active=Z, S=S, trees=trees, leaf_type_maps=leaf_type_maps, priors=priors,
+            unit_drop_edges=unit_drop_edges, add_steps=add_steps, rm_steps=rm_steps,
+            keep_prob=keep_prob, show_edge_repair=show_edge_repair
+        )
+        cache[key] = (struct, sc)
+        return struct, sc
+
+    # --- init beam
+    init_struct, init_score = scoreZ(Z0)
+    beam = [(init_score, Z0, init_struct)]
+    best = beam[0]
+    seen = {Z_key(Z0)}
+
+    # --- outer layers bar
+    layer_iter = range(layers)
+    if show_progress:
+        layer_iter = trange(layers, desc="Z-beam: layers", leave=True)
+
+    for L in layer_iter:
+        candidates = []
+
+        # Optionally show a bar over beam parents
+        parents_iter = beam
+        if show_parent_bars:
+            parents_iter = tqdm(beam, desc=f"  layer {L+1}: parents", leave=False)
+
+        for sc_parent, Z_parent, st_parent in parents_iter:
+            Z_list = list(Z_parent)
+            remove_pool = Z_list
+            add_pool = [q for q in Q_universe if q not in Z_parent]
+
+            # Candidate count for this parent
+            total_swaps = len(remove_pool) * max(1, len(add_pool))
+            cand_iter = ((P, Q) for P in remove_pool for Q in add_pool)
+
+            # Optional P/Q bar
+            if show_candidate_bars:
+                cand_iter = tqdm(
+                    cand_iter,
+                    total=total_swaps,
+                    desc="    P/Q swaps",
+                    leave=False
+                )
+
+            for (P,Q) in cand_iter:
+                Zp = set(Z_parent); Zp.remove(P); Zp.add(Q)
+                key = Z_key(Zp)
+                if key in seen: 
+                    continue
+                seen.add(key)
+                stp, scp = scoreZ(Zp)
+                candidates.append((scp, Zp, stp))
+
+        if not candidates:
+            # update postfix once before breaking
+            if show_progress:
+                layer_iter.set_postfix({
+                    "Best": f"{best[0]:.3f}",
+                    "Cache": f"H{cache_hits}/M{cache_misses}"
+                })
+            break
+
+        # keep top beam_width
+        candidates.sort(key=lambda x: -x[0])
+        beam = candidates[:beam_width]
+
+        # update best and layer postfix
+        if beam[0][0] > best[0]:
+            best = beam[0]
+        if show_progress:
+            layer_iter.set_postfix({
+                "Best": f"{best[0]:.3f}",
+                "Top": f"{beam[0][0]:.3f}",
+                "Beam": f"{len(beam)}",
+                "Cache": f"H{cache_hits}/M{cache_misses}"
+            })
+
+    best_score, best_Z, best_struct = best
+    _, per_tree_logs = score_structure(best_struct, trees, leaf_type_maps, priors, prune_eps=0.0)
+    # final summary print (optional)
+    if show_progress:
+        print(f"[Z-beam] done. Best={best_score:.6f}  Cache H/M={cache_hits}/{cache_misses}")
+    return best_struct, best_score, per_tree_logs
+
 
     
 def map_search(
@@ -1880,12 +2120,16 @@ def print_fitch_potency_probs_once(
     print("===============================================")
 
 
-
+    
 def process_case(map_idx: int, type_num: int, cells_n: int,
                  priors, iters=100, restarts=5, log_dir: Optional[str]=None,
                  tree_kind: str = "graph", n_jobs: Optional[int] = None,
-                 baseline_only: bool = False):  # <--- NEW
-                 
+                 baseline_only: bool = False,
+                 use_z_beam: bool = True,   # <---- NEW
+                 beam_width: int = 128,
+                 beam_layers: int = 120):
+
+    
     # Resolve and validate all inputs (will print what it tries)
     fate_map_path, idx4 = build_fate_map_path(map_idx, type_num, tree_kind=tree_kind)
     tree_paths, meta_paths = build_tree_and_meta_paths(map_idx, type_num, cells_n, tree_kind=tree_kind)
@@ -1945,32 +2189,30 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
         # Here pred_loss is None (we're not scoring a structure in baseline).
         return jd, gt_loss, 0
 
-    case_plot_root = os.path.join(
-        "plots",
-        f"type_{type_num}",
-        f"map_{idx4}",
-        f"cells_{cells_n}"
-    )
-    os.makedirs(case_plot_root, exist_ok=True)
+    if use_z_beam:
+        # --- New path: Z-beam + A-repair ---
+        bestF, best_score, logs = map_search_Z_beam(
+            S, trees, leaf_type_maps, priors, k=priors.fixed_k,
+            beam_width=48, layers=50, cand_pool=100,
+            add_steps=3, rm_steps=1,
+            unit_drop_edges=False, keep_prob=0.25, seed=123,
+            show_progress=True, show_parent_bars=True, show_candidate_bars=True, show_edge_repair=True
+        )
 
-    bestF, best_score, per_tree_logs = map_search_parallel(
-        S=S,
-        trees=trees,
-        leaf_type_maps=leaf_type_maps,
-        priors=priors,
-        unit_drop_edges=False,
-        fixed_k=priors.fixed_k if priors.potency_mode=="fixed_k" else None,
-        init_seed=123,
-        iters=iters,
-        restarts=restarts,
-        temp_init=1.0,
-        temp_decay=0.995,
-        move_probs=(0.3, 0.2, 0.3, 0.2),
-        prune_eps=0.0,
-        n_jobs=n_jobs,
-        plot_root=case_plot_root,                           # <--- NEW
-        run_tag=f"type{type_num}_map{idx4}_cells{cells_n}"  # <--- NEW
-    )
+
+    else:
+        # --- Old SA path (parallel) ---
+        case_plot_root = os.path.join("plots", f"type_{type_num}", f"map_{idx4}", f"cells_{cells_n}")
+        os.makedirs(case_plot_root, exist_ok=True)
+        bestF, best_score, per_tree_logs = map_search_parallel(
+            S=S, trees=trees, leaf_type_maps=leaf_type_maps, priors=priors,
+            unit_drop_edges=False, fixed_k=priors.fixed_k if priors.potency_mode=="fixed_k" else None,
+            init_seed=123, iters=iters, restarts=restarts, temp_init=1.0, temp_decay=0.995,
+            move_probs=(0.3, 0.2, 0.3, 0.2), prune_eps=0.0, n_jobs=n_jobs,
+            plot_root=case_plot_root, run_tag=f"type{type_num}_map{idx4}_cells{cells_n}"
+        )
+
+    # --- The rest of process_case stays identical: pretty-print, GT scoring, Jaccard, logs ---
 
     # --- Pretty print inferred map ---
     print(f"\n=== BEST MAP for type_{type_num}, map {idx4}, cells_{cells_n} ===")
@@ -2043,14 +2285,20 @@ def main_multi_type(type_nums=[6,10,14],
             for idx in range(maps_start, maps_end+1):
                 for cells in cells_list:
                     try:
+    
+
                         jd, gt_loss, pred_loss = process_case(
                             idx, t, cells, priors,
                             iters=30, restarts=1, log_dir=log_dir,
                             tree_kind=tree_kind, 
                             n_jobs= os.cpu_count()-1,
-                            baseline_only=baseline_only  # start single-process
+                            baseline_only=baseline_only,
+                            use_z_beam=True,            # ← use the new search
+                            beam_width=128,
+                            beam_layers=120
+                        )  # start single-process
                             # n_jobs= 1  # start single-process
-                        )
+        
                         writer.writerow([t, idx, cells, f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}"])
                         results.append((t, idx, cells, jd, gt_loss, pred_loss))
                     except Exception as e:
@@ -2070,13 +2318,13 @@ def main_multi_type(type_nums=[6,10,14],
 
 if __name__ == "__main__":
     main_multi_type(
-        type_nums=[6],
-        maps_start=4,
-        maps_end=4,
+        type_nums=[10],
+        maps_start=26,
+        maps_end=26,
         cells_list=[50],
         out_csv="checking.csv",
         # log_dir="logs_types",
         tree_kind="graph",   # or "bin_trees" or "graph"
-        fixed_k=5,
-        baseline_only = True   # <--- choose k here
+        fixed_k=9,
+        # baseline_only = True   # <--- choose k here
     )
