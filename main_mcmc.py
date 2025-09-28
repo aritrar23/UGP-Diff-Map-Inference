@@ -8,6 +8,8 @@ import itertools
 from typing import Iterable,  Dict, Tuple, List, Optional, Set, FrozenSet
 from collections import Counter, defaultdict
 from tqdm import trange
+import traceback
+
 
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -2722,7 +2724,7 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
         priors=priors,                # same Priors as before (for Z prior). Fixed-k supported.
         unit_drop_edges=False,        # or True, your choice; A is "all admissible" deterministically
         fixed_k=priors.fixed_k if priors.potency_mode == "fixed_k" else None,
-        steps=60,
+        steps=35,
         burn_in=15,
         thin=10,
         seed=123,
@@ -2946,8 +2948,6 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
 
 #     print(f"\nSummary saved to {output_file}")
 
-import traceback
-
 def main_multi_type(type_nums=[10,14],
                     maps_start=17, maps_end=26,
                     cells_list=[50,100,200],
@@ -2955,7 +2955,7 @@ def main_multi_type(type_nums=[10,14],
                     log_dir="logs_types",
                     tree_kind: str = "graph"):
     random.seed(7)
-    priors = Priors(potency_mode="fixed_k", fixed_k=9, rho=0.2)
+    priors = Priors(potency_mode="fixed_k", fixed_k=5, rho=0.2)
     results = []
 
     with open(out_csv, "w", newline="") as f:
@@ -3014,11 +3014,11 @@ def main_multi_type(type_nums=[10,14],
 
 if __name__ == "__main__":
     main_multi_type(
-        type_nums=[10],
-        maps_start=26,
-        maps_end=26,
-        cells_list=[50],
-        out_csv="new.csv",
+        type_nums=[6],
+        maps_start=6,
+        maps_end=6,
+        cells_list=[100],
+        out_csv="6_100_6_mcmc.csv",
         log_dir="prac",
         tree_kind="graph"   # or "bin_trees" or "graph"
     )

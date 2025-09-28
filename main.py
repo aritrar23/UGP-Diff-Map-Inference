@@ -12,6 +12,7 @@ from typing import Iterable,  Dict, Tuple, List, Optional, Set, FrozenSet
 from collections import Counter, defaultdict
 from tqdm import trange
 import traceback
+import numpy as np
 
 
 #!/usr/bin/env python3
@@ -29,6 +30,96 @@ p ~ Beta(1,1) is integrated out exactly.
 - Priors: fixed-k (uniform over potency sets) OR Bernoulli(pi_P); edges Bernoulli(rho)
 - Stochastic hill-climb + simulated annealing over F=(Z,A)
 """
+
+def edges_from_A(A: Dict[Tuple[frozenset, frozenset], int]) -> Set[Tuple[frozenset, frozenset]]:
+    return {e for e, v in A.items() if v == 1}
+
+def jaccard_distance_edges(E1: Set[Tuple[frozenset, frozenset]], 
+                           E2: Set[Tuple[frozenset, frozenset]]) -> float:
+    if not E1 and not E2:
+        return 0.0
+    inter = len(E1 & E2)
+    union = len(E1 | E2)
+    return 1.0 - (inter / union if union else 1.0)
+def _laplacian_eigs_undirected(nodes: List[frozenset],
+                               edges: Set[Tuple[frozenset, frozenset]]) -> np.ndarray:
+    """Undirect the edge set, build L = D - A over `nodes`, return eigenvalues (sorted)."""
+    idx = {n: i for i, n in enumerate(nodes)}
+    n = len(nodes)
+    A = np.zeros((n, n), dtype=float)
+    for (u, v) in edges:
+        i, j = idx[u], idx[v]
+        if i == j:
+            continue
+        A[i, j] = 1.0
+        A[j, i] = 1.0  # undirected
+    d = np.sum(A, axis=1)
+    L = np.diag(d) - A
+    # symmetric PSD -> use eigvalsh
+    vals = np.linalg.eigvalsh(L)
+    return np.sort(vals)
+
+def _spectral_density(omegas: np.ndarray, wgrid: np.ndarray, gamma: float) -> np.ndarray:
+    """
+    Lorentzian kernel density on frequencies (ω_i = sqrt(λ_i)).
+    ρ(ω) = (1/n) * Σ_i [ γ / ( (ω - ω_i)^2 + γ^2 ) ]
+    """
+    if len(omegas) == 0:
+        return np.zeros_like(wgrid)
+    # broadcast: (m grid, k eigs)
+    diff = wgrid[:, None] - omegas[None, :]
+    dens = gamma / (diff * diff + gamma * gamma)
+    return np.mean(dens, axis=1)
+
+def _im_distance_from_spectra(lams1: np.ndarray, lams2: np.ndarray, gamma: float = 0.08) -> float:
+    """
+    Numerically integrate the L2 distance between spectral densities.
+    Uses ω = sqrt(λ) grid up to the max observed plus a margin.
+    """
+    w1 = np.sqrt(np.maximum(lams1, 0.0))
+    w2 = np.sqrt(np.maximum(lams2, 0.0))
+    wmax = float(max(w1.max() if w1.size else 0.0, w2.max() if w2.size else 0.0, 1.0))
+    wgrid = np.linspace(0.0, wmax + 3.0 * gamma, 2000)  # dense grid
+    rho1 = _spectral_density(w1, wgrid, gamma)
+    rho2 = _spectral_density(w2, wgrid, gamma)
+    diff2 = (rho1 - rho2) ** 2
+    # simple trapezoidal rule
+    return float(np.trapz(diff2, wgrid)) ** 0.5
+
+def ipsen_mikhailov_similarity(
+    nodes_union: Set[frozenset],
+    edges1: Set[Tuple[frozenset, frozenset]],
+    edges2: Set[Tuple[frozenset, frozenset]],
+    gamma: float = 0.08,
+) -> Tuple[float, float]:
+    """
+    Returns (im_distance, im_similarity) on [0,1].
+    - Distance computed on undirected versions over the *same* node set.
+    - Similarity := 1 - d / d_max, where d_max is distance between empty and complete graph.
+    """
+    nodes = sorted(nodes_union, key=lambda x: (len(x), tuple(sorted(x))))
+    # spectra
+    l1 = _laplacian_eigs_undirected(nodes, edges1)
+    l2 = _laplacian_eigs_undirected(nodes, edges2)
+    d = _im_distance_from_spectra(l1, l2, gamma=gamma)
+
+    # normalization baseline on same node set
+    n = len(nodes)
+    empty_edges: Set[Tuple[frozenset, frozenset]] = set()
+    complete_edges: Set[Tuple[frozenset, frozenset]] = set()
+    for i in range(n):
+        for j in range(i + 1, n):
+            complete_edges.add((nodes[i], nodes[j]))
+    L_empty = _laplacian_eigs_undirected(nodes, empty_edges)
+    L_full  = _laplacian_eigs_undirected(nodes, complete_edges)
+
+    dmax = _im_distance_from_spectra(L_empty, L_full, gamma=gamma)
+    # guard
+    if dmax <= 1e-12:
+        sim = 1.0 if d <= 1e-12 else 0.0
+    else:
+        sim = max(0.0, min(1.0, 1.0 - d / dmax))
+    return d, sim
 
 # ----------------------------
 # Tree structures and Newick
@@ -1238,21 +1329,22 @@ def map_search(
                 elif r < addE + rmE:
                     prop = current.propose_remove_edge(rng)
                 else:
-                    print("Trying to swap potency")
+                    # print("Trying to swap potency")
                     swapping = True
                     prop = current.propose_swap_potency(rng)
 
                     if prop is None:
-                        print("[SWAP] No valid swap proposal (constraints prevented construction).")
+                        hello = 1
+                        # print("[SWAP] No valid swap proposal (constraints prevented construction).")
                     else:
                         def _pot_str(P): return "{" + ",".join(sorted(list(P))) + "}"
                         multis_prop = sorted(
                             [P for P in prop.Z_active if len(P) >= 2],
                             key=lambda x: (len(x), tuple(sorted(list(x))))
                         )
-                        print("[SWAP] Proposed Z' (multi-type potencies):")
-                        for P in multis_prop:
-                            print("   ", _pot_str(P))
+                        # print("[SWAP] Proposed Z' (multi-type potencies):")
+                        # for P in multis_prop:
+                        #     print("   ", _pot_str(P))
             else:
                 if r < addP:
                     prop = current.propose_add_potency(rng)
@@ -1272,16 +1364,16 @@ def map_search(
             prop_score, _ = score_structure(prop, trees, leaf_type_maps, priors, prune_eps)
 
             delta = prop_score - curr_score
-            if (swapping == True):
-                print(f"Current score: {curr_score}")
-                print(f"Prop score: {prop_score}")
+            # if (swapping == True):
+            #     print(f"Current score: {curr_score}")
+            #     print(f"Prop score: {prop_score}")
             accept = (delta >= 0) or (rng.random() < math.exp(delta / max(tau,1e-12)))
             if accept:
                 current = prop
                 curr_score = prop_score
                 
-                if (swapping == True):
-                    print("Yay! Swapped successfully!")
+                # if (swapping == True):
+                #     print("Yay! Swapped successfully!")
 
                 if curr_score > local_best_score:
                     local_best = current.clone()
@@ -1723,7 +1815,12 @@ def score_given_map_and_trees(txt_path: str, trees, meta_paths, fixed_k,
     # Convert potency_def dict to set of frozensets
     potency_sets = {frozenset(members) for members in potency_def.values()}
 
-    return potency_sets, total_ll
+        # Ground-truth node & edge sets (over potencies, including singletons)
+    gt_Z_active = set(Z_active)   # already includes singletons for S_all
+    gt_edges = edges_from_A(A)
+
+    return potency_sets, total_ll, gt_Z_active, gt_edges
+
 
 def jaccard_distance(set1, set2):
     if not set1 and not set2:
@@ -1994,9 +2091,11 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
     # --- Ground truth scoring ---
     predicted_sets = {p for p in bestF.Z_active if len(p) > 1}
 
-    ground_truth_sets, gt_loss = score_given_map_and_trees(
+
+    ground_truth_sets, gt_loss, gt_Z_active, gt_edges = score_given_map_and_trees(
         fate_map_path, trees, meta_paths, fixed_k=priors.fixed_k
     )
+
 
     # ground_truth_sets, gt_loss = score_given_map_and_trees(
     #     fate_map_path, trees, meta_paths, fixed_k=priors.fixed_k
@@ -2005,11 +2104,33 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
     pretty_print_sets("Predicted Sets", predicted_sets)
     pretty_print_sets("Ground Truth Sets", ground_truth_sets)
 
+    print("\n=== Ground Truth Directed Edges ===")
+    for (u, v) in sorted(gt_edges, key=lambda e: (len(e[0]), tuple(sorted(e[0])), len(e[1]), tuple(sorted(e[1])))):
+        print(f"{sorted(list(u))} -> {sorted(list(v))}")
+
     jd = jaccard_distance(predicted_sets, ground_truth_sets)
     print("\n=== Jaccard Distance ===")
     print(f"Jaccard Distance (Pred vs GT): {jd:.6f}")
     print(f"Predicted map's loss: {best_score:.6f}")
     print(f"Ground truth's loss: {gt_loss:.6f}")
+
+        # --- EDGE METRICS (Predicted vs Ground Truth) ---
+    pred_edges = edges_from_A(bestF.A)
+    edge_jacc = jaccard_distance_edges(pred_edges, gt_edges)
+
+    nodes_union = gt_Z_active | set(bestF.Z_active)
+    im_d, im_s = ipsen_mikhailov_similarity(
+        nodes_union = nodes_union,
+        edges1 = pred_edges,
+        edges2 = gt_edges,
+        gamma = 0.08,
+    )
+
+    print("\n=== Edge-set Metrics ===")
+    print(f"Jaccard distance (edges): {edge_jacc:.6f}")
+    print(f"Ipsen–Mikhailov distance: {im_d:.6f}")
+    print(f"Ipsen–Mikhailov similarity: {im_s:.6f}")
+
 
     # optional logs
     if log_dir:
@@ -2018,12 +2139,14 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
         with open(log_path, "w") as f:
             f.write(f"type_{type_num}, map {idx4}, cells_{cells_n}\n")
             f.write(f"Jaccard={jd:.6f}, GT loss={gt_loss:.6f}, Pred loss={best_score:.6f}\n")
-    return jd, gt_loss, best_score
+    return jd, gt_loss, best_score, edge_jacc, im_s
 
 
 def main_multi_type(type_nums=[6,10,14],
                     maps_start=17, maps_end=26,
                     cells_list=[50,100,200],
+                    iters = 100,
+                    restarts = 7,
                     out_csv="results_types_6_10_14_maps_17_26.csv",
                     log_dir="logs_types",
                     tree_kind: str = "graph",
@@ -2037,21 +2160,23 @@ def main_multi_type(type_nums=[6,10,14],
 
     with open(out_csv, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["Type","MapIdx","Cells","Jaccard","GT Loss","Pred Loss"])
+        writer.writerow(["Type","MapIdx","Cells","Jaccard","GT Loss","Pred Loss","Edge Jaccard","IM Similarity"])
 
         for t in type_nums:
             for idx in range(maps_start, maps_end+1):
                 for cells in cells_list:
                     try:
-                        jd, gt_loss, pred_loss = process_case(
+                        jd, gt_loss, pred_loss, edge_jacc, im_s = process_case(
                             idx, t, cells, priors,
-                            iters=30, restarts=1, log_dir=log_dir,
+                            iters=iters, restarts=restarts, log_dir=log_dir,
                             tree_kind=tree_kind, 
                             n_jobs= os.cpu_count()-1,
                             baseline_only=baseline_only  # start single-process
                             # n_jobs= 1  # start single-process
                         )
-                        writer.writerow([t, idx, cells, f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}"])
+                        writer.writerow([t, idx, cells, f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}",
+                        f"{edge_jacc:.6f}", f"{im_s:.6f}"])
+
                         results.append((t, idx, cells, jd, gt_loss, pred_loss))
                     except Exception as e:
                         print(f"[WARN] Failed type_{t} map {idx:04d} cells_{cells}: {repr(e)}")
@@ -2070,13 +2195,15 @@ def main_multi_type(type_nums=[6,10,14],
 
 if __name__ == "__main__":
     main_multi_type(
-        type_nums=[6],
-        maps_start=4,
-        maps_end=4,
+        type_nums=[10],
+        maps_start=2,
+        maps_end = 7,
         cells_list=[50],
-        out_csv="checking.csv",
+        iters = 50,
+        restarts = 7,
+        out_csv="10_50_2_7_all_loss.csv",
         # log_dir="logs_types",
         tree_kind="graph",   # or "bin_trees" or "graph"
-        fixed_k=5,
-        baseline_only = True   # <--- choose k here
+        fixed_k=9,
+        # baseline_only = True   # <--- choose k here
     )
