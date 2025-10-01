@@ -1,0 +1,2 @@
+Type,MapIdx,Cells,Jaccard,GT Loss,Pred Loss,Edge_Jaccard,IM_similarity
+10,2,50,0.200000,-1784.575183,-1498.554210,0.533333,0.896912
