@@ -10,14 +10,10 @@ from collections import Counter, defaultdict
 from tqdm import trange
 import traceback
 import numpy as np
-import numba
-# import matplotlib
-# matplotlib.use('Agg')  # MUST BE CALLED BEFORE importing pyplot
-# import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')  # MUST BE CALLED BEFORE importing pyplot
+import matplotlib.pyplot as plt
 import arviz as az
-# Add this with your other imports
-from scipy.special import gammaln # This is the vectorized log-gamma function
-
 
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -34,13 +30,6 @@ p ~ Beta(1,1) is integrated out exactly.
 - Priors: fixed-k (uniform over potency sets) OR Bernoulli(pi_P); edges Bernoulli(rho)
 - Stochastic hill-climb + simulated annealing over F=(Z,A)
 """
-
-# def get_structure_key(struct: Structure) -> tuple:
-#     """Creates a hashable, unique key from a Structure object."""
-#     # frozenset is an immutable, hashable set.
-#     z_key = frozenset(struct.Z_active)
-#     a_key = frozenset(struct.A.items())
-#     return (z_key, a_key)
 
 def edges_from_A(A: Dict[Tuple[frozenset, frozenset], int]) -> Set[Tuple[frozenset, frozenset]]:
     return {e for e, v in A.items() if v == 1}
@@ -184,6 +173,21 @@ class TreeNode:
 #     root = parse()
 #     if i != len(s): raise ValueError(f"Trailing characters: '{s[i:]}'")
 #     return root
+
+class SubsetReach:
+    """
+    A dummy 'Reach' object that mimics a dictionary for the Z-only MCMC.
+    It defines reachability simply as the subset relationship, avoiding the
+    need to compute or store the full transitive closure.
+    """
+    def get(self, key: FrozenSet[str], default: List) -> List[FrozenSet[str]]:
+        # In the Z-only search, A is always fully connected, so reachability
+        # is just the subset relation.
+        # 'key' is the parent potency P. We are looking for all reachable Q's.
+        
+        # This is a placeholder that we won't actually use. The logic
+        # is handled inside the DP function directly now.
+        return default
 
 def iter_edges(root: TreeNode) -> Iterable[Tuple[TreeNode, TreeNode]]:
     """Yield (parent, child) for every directed edge in the rooted tree."""
@@ -520,48 +524,37 @@ def build_mid_sized_connected_dag(Z_active, keep_prob=0.3, unit_drop=False, rng=
     return A
 
 
-import numpy as np
+def transitive_closure(labels: List[FrozenSet[str]], A: Dict[Tuple[FrozenSet[str],FrozenSet[str]], int]) -> Dict[FrozenSet[str], Set[FrozenSet[str]]]:
+    # Compute reachability (transitive closure) over the directed graph (labels, A).
+    # Result: Reach[L] = set of nodes U such that there is a path L ->* U (including L itself).
+    # Implementation details:
+    #  - Build an index for labels and a boolean adjacency matrix M.
+    #  - Set M[i][i] = True (reflexive reachability).
+    #  - For each edge (P,Q) with A[(P,Q)]==1, mark M[i][j] = True.
+    #  - Floyd–Warshall-style closure: if i->k and k->j then i->j.
+    # Used by: Structure.__init__/recompute_reach (to query allowed label transitions during DP).
+    idx = {L:i for i,L in enumerate(labels)}
+    n=len(labels)
+    M=[[False]*n for _ in range(n)]
+    for i in range(n): M[i][i]=True                 # every node reaches itself
+    for (P,Q),v in A.items():
+        if v:
+            i,j=idx[P],idx[Q]; M[i][j]=True         # direct edges from A
 
-def transitive_closure_numpy(
-    labels: List[FrozenSet[str]],
-    A: Dict[Tuple[FrozenSet[str], FrozenSet[str]], int]
-) -> Dict[FrozenSet[str], Set[FrozenSet[str]]]:
-    """
-    Computes the transitive closure of a directed graph using NumPy for performance.
-    """
-    idx = {L: i for i, L in enumerate(labels)}
-    n = len(labels)
-    
-    # 1. Create a boolean adjacency matrix
-    M = np.zeros((n, n), dtype=bool)
-    
-    # 2. A node can always reach itself (reflexive)
-    np.fill_diagonal(M, True)
-
-    # 3. Add the direct edges from the adjacency dictionary A
-    for (P, Q), v in A.items():
-        if v == 1:
-            i, j = idx.get(P), idx.get(Q)
-            # Ensure both potencies are in the current label set
-            if i is not None and j is not None:
-                M[i, j] = True
-
-    # 4. Use a vectorized Floyd-Warshall-style algorithm.
-    # This loop is significantly faster in NumPy than as nested Python loops.
+    # Triple loop closure (standard transitive closure).
     for k in range(n):
-        # For every pair of nodes (i, j), the new reachability M[i, j] is
-        # the old reachability OR (is there a path from i to k AND a path from k to j).
-        M_col_k = M[:, k, np.newaxis] # Path from i to k
-        M_row_k = M[np.newaxis, k, :] # Path from k to j
-        M |= (M_col_k & M_row_k)
+        Mk=M[k]
+        for i in range(n):
+            if M[i][k]:
+                Mi=M[i]
+                for j in range(n):
+                    if Mk[j]: Mi[j]=True
 
-    # 5. Convert the final matrix back to the dictionary format required by the DP.
-    Reach = {}
-    for i, L in enumerate(labels):
-        # np.where is a fast way to get the indices of all reachable nodes
-        reachable_indices = np.where(M[i, :])[0]
-        Reach[L] = {labels[j] for j in reachable_indices}
-        
+    # Rehydrate into a dict keyed by the actual frozenset labels.
+    Reach={L:set() for L in labels}
+    for i,L in enumerate(labels):
+        for j,U in enumerate(labels):
+            if M[i][j]: Reach[L].add(U)
     return Reach
 
 
@@ -591,89 +584,6 @@ def compute_B_sets(root: TreeNode, leaf_to_type: Dict[str,str]) -> Dict[TreeNode
         B[v]=acc; return acc
     post(root); return B
 
-# The NEW signature accepts max_dim
-def dp_tree_root_table_numpy(
-    root: TreeNode,
-    active_labels: List[FrozenSet[str]],
-    Reach: Dict[FrozenSet[str], Set[FrozenSet[str]]],
-    B_sets: Dict[TreeNode, Set[str]],
-    max_dim: int,
-    prune_eps: float = 0.0
-) -> np.ndarray:
-    
-    label_index = {L: i for i, L in enumerate(active_labels)}
-    memo: Dict[Tuple[int, int], np.ndarray] = {}
-    def nid(v: TreeNode) -> int: return id(v)
-
-    def M(v: TreeNode, P: Optional[FrozenSet[str]]) -> np.ndarray:
-        key = (nid(v), -1 if P is None else label_index[P])
-        if key in memo:
-            return memo[key]
-
-        if v.is_leaf():
-            res = np.array([[0.0]], dtype=np.float64)
-            memo[key] = res
-            return res
-
-        Bv = B_sets.get(v, set())
-        out_table = np.full((1, 1), -np.inf, dtype=np.float64)
-
-        parent_reach = active_labels if P is None else list(Reach.get(P, []))
-
-        for L in parent_reach:
-            if not Bv.issubset(L):
-                continue
-            
-            o_local = len(L & Bv)
-            d_local = len(L - Bv)
-
-            child_tabs = [M(u, L) for u in v.children]
-            if any(tab.size == 0 for tab in child_tabs):
-                continue
-            
-            convolved_tab = np.array([[0.0]], dtype=np.float64)
-            if child_tabs:
-                convolved_tab = child_tabs[0]
-                for t in child_tabs[1:]:
-                    convolved_tab = convolve_2d_log_numba(convolved_tab, t)
-            
-            h, w = convolved_tab.shape
-            required_h = o_local + h
-            required_w = d_local + w
-            current_h, current_w = out_table.shape
-
-            if required_h > current_h or required_w > current_w:
-                new_h = max(current_h, required_h)
-                new_w = max(current_w, required_w)
-                new_out_table = np.full((new_h, new_w), -np.inf, dtype=np.float64)
-                new_out_table[:current_h, :current_w] = out_table
-                out_table = new_out_table
-            
-            target_slice_o = slice(o_local, o_local + h)
-            target_slice_d = slice(d_local, d_local + w)
-            
-            # <<< NEW: Add an assertion for robust debugging >>>
-            # This will give a clear error if the shapes don't match for any reason.
-            target_shape = out_table[target_slice_o, target_slice_d].shape
-            assert target_shape == convolved_tab.shape, \
-                f"Shape mismatch! Target slice is {target_shape}, but convolved table is {convolved_tab.shape}."
-
-            out_table[target_slice_o, target_slice_d] = np.logaddexp(
-                out_table[target_slice_o, target_slice_d],
-                convolved_tab
-            )
-
-        valid_rows = np.where(np.any(out_table > -np.inf, axis=1))[0]
-        valid_cols = np.where(np.any(out_table > -np.inf, axis=0))[0]
-        if len(valid_rows) > 0 and len(valid_cols) > 0:
-            final_table = out_table[:valid_rows[-1]+1, :valid_cols[-1]+1]
-        else:
-            final_table = np.array([[]], dtype=np.float64)
-
-        memo[key] = final_table
-        return final_table
-
-    return M(root, None)
 
 def dp_tree_root_table(
     root: TreeNode,
@@ -704,8 +614,20 @@ def dp_tree_root_table(
         # print(f"{indent}[DP] Observed types B(v): {Bv}")
         out = {}
 
-        parent_reach = active_labels if P is None else list(Reach.get(P, []))
-        # print(f"{indent}[DP] Node can take one of {len(parent_reach)} reachable labels.")
+        parent_reach = []
+
+        if isinstance(Reach, SubsetReach):
+            # If it's the Z-only search, reachability is just the subset rule.
+            # 'P' is the parent label. We find all active labels 'L' that are subsets of P.
+            if P is None:
+                parent_reach = active_labels
+            else:
+                parent_reach = [L for L in active_labels if L.issubset(P)]
+
+        else:
+            # Otherwise, use the standard dictionary lookup for the A-only search.
+            parent_reach = active_labels if P is None else list(Reach.get(P, []))
+            # print(f"{indent}[DP] Node can take one of {len(parent_reach)} reachable labels.")
 
         for L in parent_reach:
             # print(f"{indent}  - Testing label L = {L}")
@@ -758,55 +680,6 @@ def logsumexp(a, b):
         return a + math.log1p(math.exp(b - a))
     else:
         return b + math.log1p(math.exp(a - b))
-    
-# A Numba-JITed version of logsumexp for scalar values.
-@numba.njit
-def logsumexp_numba(a, b):
-    """Numerically stable log(exp(a) + exp(b)) compiled by Numba."""
-    if a == -np.inf: return b
-    if b == -np.inf: return a
-    if a > b:
-        return a + np.log1p(np.exp(b - a))
-    else:
-        return b + np.log1p(np.exp(a - b))
-
-# The core replacement for your dictionary-based convolution.
-# This is the powerhouse of the optimization.
-@numba.njit
-def convolve_2d_log_numba(A: np.ndarray, B: np.ndarray) -> np.ndarray:
-    """
-    Fast convolution of 2D log-space DP tables using Numba.
-    A and B are 2D NumPy arrays where values are log-probabilities.
-    """
-    # Determine the shape of the resulting convolved array.
-    # The new dimension is (dimA + dimB - 1).
-    out_shape = (A.shape[0] + B.shape[0] - 1, A.shape[1] + B.shape[1] - 1)
-    
-    # Initialize the output array with -np.inf, which is log(0).
-    out = np.full(out_shape, -np.inf, dtype=np.float64)
-
-    # Perform the convolution with explicit loops.
-    # Numba will compile these loops into highly optimized machine code.
-    for o1 in range(A.shape[0]):
-        for d1 in range(A.shape[1]):
-            log_w1 = A[o1, d1]
-            if log_w1 == -np.inf:
-                continue  # Skip if the probability is zero.
-            
-            for o2 in range(B.shape[0]):
-                for d2 in range(B.shape[1]):
-                    log_w2 = B[o2, d2]
-                    if log_w2 == -np.inf:
-                        continue
-                    
-                    # The new coordinates are the sum of the old ones.
-                    o_new, d_new = o1 + o2, d1 + d2
-                    # In log-space, multiplication becomes addition.
-                    log_w_new = log_w1 + log_w2
-                    
-                    # Accumulate probabilities using logsumexp.
-                    out[o_new, d_new] = logsumexp_numba(out[o_new, d_new], log_w_new)
-    return out
 
 def sparse_convolve_2d_log(A: Dict[Tuple[int,int],float], B: Dict[Tuple[int,int],float], depth: int) -> Dict[Tuple[int,int],float]:
     """ Convolution of sparse 2D tables where values are in log-space. """
@@ -825,40 +698,6 @@ def sparse_convolve_2d_log(A: Dict[Tuple[int,int],float], B: Dict[Tuple[int,int]
     # print(f"{indent}  [DEBUG log_convolve] >> Resulting table has size {len(out)}")
     return out
 
-def tree_marginal_from_root_table_log_numpy(C_log: np.ndarray) -> float:
-    """
-    Calculates the final log marginal probability from a log-space DP NumPy array.
-    (Fully vectorized version)
-    """
-    if C_log.size == 0 or np.all(C_log == -np.inf):
-        return -math.inf
-
-    # Find indices (O, D) where the log-probability is not -inf
-    O_indices, D_indices = np.where(C_log > -np.inf)
-    
-    if O_indices.size == 0:
-        return -math.inf
-
-    log_weights = C_log[O_indices, D_indices]
-
-    # <<< NEW: Fully vectorized log-beta calculation using scipy.special.gammaln >>>
-    # This is faster and more robust than the previous list-comprehension method.
-    log_beta_terms = (
-        gammaln(O_indices + 1) + 
-        gammaln(D_indices + 1) - 
-        gammaln(O_indices + D_indices + 2)
-    )
-    
-    total_log_terms = log_weights + log_beta_terms
-
-    # Use a stable log-sum-exp to get the final marginal log-likelihood
-    max_log = np.max(total_log_terms)
-    if max_log == -np.inf:
-        return -np.inf
-        
-    logL = max_log + np.log(np.sum(np.exp(total_log_terms - max_log)))
-    
-    return float(logL)
 def tree_marginal_from_root_table_log(C_log: Dict[Tuple[int,int],float]) -> float:
     """
     Calculates the final log marginal probability from a log-space DP table.
@@ -1020,18 +859,36 @@ class Priors:
                 else: k_log += math.log(1-self.pi_P)
             return k_log
 
-    # <<< MODIFIED: This now accepts the pre-computed list of edges >>>
-    def log_prior_A(self,
-                    A:Dict[Tuple[FrozenSet[str],FrozenSet[str]],int],
-                    all_admissible_edges: List[Tuple[FrozenSet[str], FrozenSet[str]]]
-                   )->float:
+    def log_prior_A(self, Z_active:Set[FrozenSet[str]], A:Dict[Tuple[FrozenSet[str],FrozenSet[str]],int], unit_drop=True)->float:
+        # ------------------------------------------------------------
+        # Computes log P(A | Z): the log prior over EDGE EXISTENCE between active potencies.
+        #
+        # Inputs:
+        #   - Z_active: set of active potencies (nodes in the potency DAG)
+        #   - A: adjacency dictionary mapping (P,Q) -> {0,1}, indicating whether edge P->Q is present
+        #   - unit_drop: if True, an admissible edge must drop EXACTLY one fate (|P\Q| == 1);
+        #                otherwise any monotone subset drop (Q ⊂ P) is admissible.
+        #
+        # Prior:
+        #   - For every admissible pair (P,Q):
+        #         A_{P->Q} ~ Bernoulli(rho)
+        #     So:
+        #         log P(A|Z) = ∑_{(P,Q) admissible} [ A_{P->Q} log(rho) + (1 - A_{P->Q}) log(1 - rho) ]
+        #
+        # Notes:
+        #   - "Admissible" enforces graph shape constraints (subset-monotone and possibly unit-drop).
+        #   - If an edge (P,Q) is not admissible, it does not contribute to the product/sum at all.
+        # ------------------------------------------------------------
+        labels=list(Z_active)
+        # admissible set is pairs with subset monotone (and optionally unit-drop)
         logp=0.0
-        # Instead of two nested loops, we iterate over the smaller list of valid edges.
-        for P, Q in all_admissible_edges:
-            # a == 1 if the edge is present in A, else 0
-            a = 1 if A.get((P,Q), 0) == 1 else 0
-            # add Bernoulli log-prob for this edge
-            logp += math.log(self.rho) if a==1 else math.log(1-self.rho)
+        for P in labels:
+            for Q in labels:
+                if admissible_edge(P,Q,unit_drop):
+                    # a == 1 if the edge is present in A, else 0
+                    a = 1 if A.get((P,Q),0)==1 else 0
+                    # add Bernoulli log-prob for this edge
+                    logp += math.log(self.rho) if a==1 else math.log(1-self.rho)
         return logp
 
 # ----------------------------
@@ -1042,24 +899,30 @@ class Structure:
     def __init__(self,
                  S: List[str],
                  Z_active: Set[FrozenSet[str]],
-                 A: Dict[Tuple[FrozenSet[str], FrozenSet[str]], int],
+                 A: Dict[Tuple[FrozenSet[str],FrozenSet[str]],int],
                  unit_drop: bool = True):
-        self.S = S
-        self.Z_active = set(Z_active)
-        self.A = dict(A)
-        self.unit_drop = unit_drop
-
-        # <<< FIX: This line MUST come first >>>
-        # 1. Create self.labels_list.
-        self.labels_list = self._sorted_labels()
-        
-        # <<< This line is now correct because self.labels_list exists >>>
-        # 2. Now, compute admissible edges.
-        self.all_admissible_edges = self._compute_admissible_edges()
-        
-        # <<< This line is also now correct >>>
-        # 3. Finally, compute reachability.
-        self.Reach = transitive_closure_numpy(self.labels_list, self.A)
+        # The "model structure" F = (Z, A) that the search optimizes.
+        # - S: universe of primitive types (e.g., {"-7","-8","-9"}).
+        # - Z_active: active potency sets (nodes of the DAG). Always includes singletons {t} for t in S.
+        #             May also include multi-type sets like {"-7","-8"} depending on the prior/moves.
+        # - A: adjacency over Z_active, A[(P,Q)] ∈ {0,1}, indicating presence of edge P -> Q.
+        #      Edges are subset-monotone (and may enforce |P\Q|=1 if unit_drop=True).
+        # - unit_drop: if True, only allow edges that drop exactly one element (|P\Q| == 1).
+        #
+        # Where it’s used:
+        # - Created/updated inside map_search() during the annealed hill climb.
+        # - Passed into score_structure() which uses:
+        #     * struct.labels_list (sorted Z) and
+        #     * struct.Reach (transitive closure over A)
+        #   to run the DP (dp_tree_root_table) and compute the likelihood.
+        self.S=S
+        self.Z_active=set(Z_active)  # copy to decouple from caller; Z includes singletons and selected multis
+        self.A=dict(A)               # copy adjacency dict (edges)
+        self.unit_drop=unit_drop
+        # A consistent ordering of labels (frozensets) for indexing/memoization in DP
+        self.labels_list=self._sorted_labels()
+        # Reachability closure used by DP to constrain child labels given a parent label
+        self.Reach = transitive_closure(self.labels_list, self.A)
 
     def _sorted_labels(self)->List[FrozenSet[str]]:
         # Provide a stable, human-logical ordering of the active labels:
@@ -1067,25 +930,13 @@ class Structure:
         #   2) lexicographically by the sorted elements of the set.
         # This keeps DP indices stable and makes printed output neat.
         return sorted(list(self.Z_active), key=lambda x: (len(x), tuple(sorted(list(x)))))
-    
-      # <<< ADDED: New method to compute the edges once >>>
-    def _compute_admissible_edges(self) -> List[Tuple[FrozenSet[str], FrozenSet[str]]]:
-        """Generates all valid P -> Q edges for the current Z_active set."""
-        pairs = []
-        L = self.labels_list # Use the sorted list for consistency
-        for P in L:
-            for Q in L:
-                if admissible_edge(P, Q, self.unit_drop):
-                    pairs.append((P, Q))
-        return pairs
 
     def recompute_reach(self):
+        # Recompute both the sorted label list and the transitive closure Reach
+        # after any structural change (adding/removing potencies or edges).
+        # Called by all propose_* methods after they mutate Z_active or A.
         self.labels_list=self._sorted_labels()
-        
-        # <<< ADDED: Re-compute the admissible edges when Z changes >>>
-        self.all_admissible_edges = self._compute_admissible_edges()
-        
-        self.Reach = transitive_closure_numpy(self.labels_list, self.A)
+        self.Reach = transitive_closure(self.labels_list, self.A)
 
     def clone(self)->"Structure":
         # Return a deep-enough copy to test/accept a proposal without mutating the current state.
@@ -1141,11 +992,22 @@ class Structure:
         new.recompute_reach()
         return new
 
+    def all_edge_pairs(self)->List[Tuple[FrozenSet[str],FrozenSet[str]]]:
+        # Enumerate all admissible ordered pairs (P,Q) among the currently active potencies.
+        # Uses admissible_edge(P,Q, unit_drop) to enforce subset-monotone (and unit-drop if requested).
+        # This is the proposal pool for add-edge moves.
+        L=list(self.Z_active)
+        pairs=[]
+        for P in L:
+            for Q in L:
+                if admissible_edge(P,Q,self.unit_drop):
+                    pairs.append((P,Q))
+        return pairs
 
-    # <<< MODIFIED: This method now uses the pre-computed list >>>
     def propose_add_edge(self, rng:random.Random)->Optional["Structure"]:
-        # Use the pre-computed list for a faster lookup of candidate edges.
-        pairs = [e for e in self.all_admissible_edges if self.A.get(e,0)==0]
+        # Propose: add a single admissible edge (P->Q) that is currently absent (A[(P,Q)] == 0).
+        # Returns a NEW Structure or None if no addable edge exists.
+        pairs = [e for e in self.all_edge_pairs() if self.A.get(e,0)==0]
         if not pairs: return None
         e = rng.choice(pairs)
         new = self.clone()
@@ -1171,6 +1033,7 @@ class Structure:
 def score_structure(struct: Structure,
                     trees: List[TreeNode],
                     leaf_type_maps: List[Dict[str,str]],
+                    all_B_sets: List[Dict[TreeNode, Set[str]]], # <--- ACCEPT IT HERE
                     priors: Priors,
                     prune_eps: float = 0.0) -> Tuple[float, List[float]]:
     # Compute the (log) posterior score of a candidate structure F = (Z_active, A).
@@ -1179,155 +1042,84 @@ def score_structure(struct: Structure,
     logp = priors.log_prior_Z(struct.S, struct.Z_active)
     if not math.isfinite(logp):
         return float("-inf"), []
-    
-    # <<< MODIFIED: Pass the pre-computed edge list to the prior function >>>
-    logp += priors.log_prior_A(struct.A, struct.all_admissible_edges)
+    # Add the edge prior, which is the key difference in this function
+    logp += priors.log_prior_A(struct.Z_active, struct.A, unit_drop=struct.unit_drop)
 
     # ---- Likelihood over all trees ----
-    # ... (the rest of the function is unchanged, it uses the NumPy DP) ...
     logLs = []
-    max_dim = len(struct.S)
-    for root, leaf_to_type in zip(trees, leaf_type_maps):
-        B_sets = compute_B_sets(root, leaf_to_type)
-        if not B_sets.get(root):
-            logLs.append(0.0)
-            continue
+    for i, (root, leaf_to_type, B_sets) in enumerate(zip(trees, leaf_type_maps, all_B_sets)):
+        # B_sets = compute_B_sets(root, leaf_to_type)
+        # root_labels = B_sets.get(root, set())
 
-        C_log_np = dp_tree_root_table_numpy(
-            root, struct.labels_list, struct.Reach, B_sets, max_dim, prune_eps=prune_eps
-        )
-        tree_logL = tree_marginal_from_root_table_log_numpy(C_log_np)
+        # if not root_labels:
+        #     logLs.append(0.0)
+        #     continue
 
-        if not math.isfinite(tree_logL):
+        # CORRECTED SECTION: Use the log-space DP and marginalization functions
+        # 1. Call the DP function that returns a log-space table.
+        C_log = dp_tree_root_table(root, struct.labels_list, struct.Reach, B_sets, prune_eps=prune_eps)
+
+        if not C_log:
+            # If the DP table is empty, this structure is impossible for this tree.
             return float("-inf"), []
 
+        # 2. Call the marginalization function that works entirely in log-space.
+        tree_logL = tree_marginal_from_root_table_log(C_log)
+
+        if not math.isfinite(tree_logL):
+            # If the final log-likelihood is not a valid number, abort.
+            return float("-inf"), []
+
+        # 3. Append the per-tree log-likelihood directly. No need for math.log().
         logLs.append(tree_logL + logp)
 
-    return sum(logLs), logLs
+    # Total posterior score = log prior + sum of per-tree log-likelihoods
+    total_log_post = sum(logLs)
+    return total_log_post, logLs
+
 
 def score_structure_no_edge_prior(struct: Structure,
                     trees: List[TreeNode],
                     leaf_type_maps: List[Dict[str,str]],
+                    all_B_sets: List[Dict[TreeNode, Set[str]]], # <--- ACCEPT IT HERE
                     priors: Priors,
                     prune_eps: float = 0.0) -> Tuple[float, List[float]]:
-    # Compute the (log) posterior score of a candidate structure F = (Z_active, A).
-
-    # ---- Prior over structure F ----
-    logp = priors.log_prior_Z(struct.S, struct.Z_active)
-    if not math.isfinite(logp):
-        return float("-inf"), []
+    # print("\n" + "="*50)
+    # print("=== STARTING SCORE_STRUCTURE ===")
     
+    logp = priors.log_prior_Z(struct.S, struct.Z_active)
+    # print(f"[DEBUG score_structure] Log Prior P(Z): {logp}")
+    if not math.isfinite(logp):
+        # print("[DEBUG score_structure] P(Z) is -inf. ABORTING.")
+        return float("-inf"), []
 
-    # ---- Likelihood over all trees ----
-    # ... (the rest of the function is unchanged, it uses the NumPy DP) ...
     logLs = []
-    max_dim = len(struct.S)
-    for root, leaf_to_type in zip(trees, leaf_type_maps):
-        B_sets = compute_B_sets(root, leaf_to_type)
-        if not B_sets.get(root):
-            logLs.append(0.0)
-            continue
+    for i, (root, leaf_to_type, B_sets) in enumerate(zip(trees, leaf_type_maps, all_B_sets)):
+        # print(f"\n--- Processing Tree {i+1}/{len(trees)} ---")
+        # B_sets = compute_B_sets(root, leaf_to_type)
+        # root_labels = B_sets.get(root, set())
+        # # print(f"[DEBUG score_structure] Tree {i+1} has {len(root_labels)} unique types in its leaves.")
 
-        C_log_np = dp_tree_root_table_numpy(
-            root, struct.labels_list, struct.Reach, B_sets, max_dim, prune_eps=prune_eps
-        )
-        tree_logL = tree_marginal_from_root_table_log_numpy(C_log_np)
-
-        if not math.isfinite(tree_logL):
+        # if not root_labels:
+        #     # print(f"[DEBUG score_structure] Tree {i+1} has no mapped leaves. LogL = 0.0")
+        #     logLs.append(0.0)
+        #     continue
+        
+        C_log = dp_tree_root_table(root, struct.labels_list, struct.Reach, B_sets, prune_eps=prune_eps)
+        if not C_log:
             return float("-inf"), []
 
+        # Calculate the final log-likelihood directly
+        tree_logL = tree_marginal_from_root_table_log(C_log)
+        
+        if not math.isfinite(tree_logL):
+            return float("-inf"), []
+        
         logLs.append(tree_logL + logp)
 
+    # print(f"=== FINISHED SCORE_STRUCTURE | Total Log Posterior: {sum(logLs)} ===")
+    # print("="*50 + "\n")
     return sum(logLs), logLs
-
-# def score_structure(struct: Structure,
-#                     trees: List[TreeNode],
-#                     leaf_type_maps: List[Dict[str,str]],
-#                     priors: Priors,
-#                     prune_eps: float = 0.0) -> Tuple[float, List[float]]:
-#     # Compute the (log) posterior score of a candidate structure F = (Z_active, A).
-
-#     # ---- Prior over structure F ----
-#     logp = priors.log_prior_Z(struct.S, struct.Z_active)
-#     if not math.isfinite(logp):
-#         return float("-inf"), []
-#     # Add the edge prior, which is the key difference in this function
-#     logp += priors.log_prior_A(struct.Z_active, struct.A, unit_drop=struct.unit_drop)
-
-#     # ---- Likelihood over all trees ----
-#     logLs = []
-#     for root, leaf_to_type in zip(trees, leaf_type_maps):
-#         B_sets = compute_B_sets(root, leaf_to_type)
-#         root_labels = B_sets.get(root, set())
-
-#         if not root_labels:
-#             logLs.append(0.0)
-#             continue
-
-#         # CORRECTED SECTION: Use the log-space DP and marginalization functions
-#         # 1. Call the DP function that returns a log-space table.
-#         C_log = dp_tree_root_table(root, struct.labels_list, struct.Reach, B_sets, prune_eps=prune_eps)
-
-#         if not C_log:
-#             # If the DP table is empty, this structure is impossible for this tree.
-#             return float("-inf"), []
-
-#         # 2. Call the marginalization function that works entirely in log-space.
-#         tree_logL = tree_marginal_from_root_table_log(C_log)
-
-#         if not math.isfinite(tree_logL):
-#             # If the final log-likelihood is not a valid number, abort.
-#             return float("-inf"), []
-
-#         # 3. Append the per-tree log-likelihood directly. No need for math.log().
-#         logLs.append(tree_logL + logp)
-
-#     # Total posterior score = log prior + sum of per-tree log-likelihoods
-#     total_log_post = sum(logLs)
-#     return total_log_post, logLs
-
-
-# def score_structure_no_edge_prior(struct: Structure,
-#                     trees: List[TreeNode],
-#                     leaf_type_maps: List[Dict[str,str]],
-#                     priors: Priors,
-#                     prune_eps: float = 0.0) -> Tuple[float, List[float]]:
-#     # print("\n" + "="*50)
-#     # print("=== STARTING SCORE_STRUCTURE ===")
-    
-#     logp = priors.log_prior_Z(struct.S, struct.Z_active)
-#     # print(f"[DEBUG score_structure] Log Prior P(Z): {logp}")
-#     if not math.isfinite(logp):
-#         # print("[DEBUG score_structure] P(Z) is -inf. ABORTING.")
-#         return float("-inf"), []
-
-#     logLs = []
-#     for i, (root, leaf_to_type) in enumerate(zip(trees, leaf_type_maps)):
-#         # print(f"\n--- Processing Tree {i+1}/{len(trees)} ---")
-#         B_sets = compute_B_sets(root, leaf_to_type)
-#         root_labels = B_sets.get(root, set())
-#         # print(f"[DEBUG score_structure] Tree {i+1} has {len(root_labels)} unique types in its leaves.")
-
-#         if not root_labels:
-#             # print(f"[DEBUG score_structure] Tree {i+1} has no mapped leaves. LogL = 0.0")
-#             logLs.append(0.0)
-#             continue
-        
-#         C_log = dp_tree_root_table(root, struct.labels_list, struct.Reach, B_sets, prune_eps=prune_eps)
-#         if not C_log:
-#             return float("-inf"), []
-
-#         # Calculate the final log-likelihood directly
-#         tree_logL = tree_marginal_from_root_table_log(C_log)
-        
-#         if not math.isfinite(tree_logL):
-#             return float("-inf"), []
-        
-#         logLs.append(tree_logL + logp)
-
-#     # print(f"=== FINISHED SCORE_STRUCTURE | Total Log Posterior: {sum(logLs)} ===")
-#     # print("="*50 + "\n")
-#     return sum(logLs), logLs
 
 
 # deterministically build ALL admissible edges for a given Z (keeps MCMC symmetric/easy)
@@ -1340,6 +1132,68 @@ def _full_edges_for_Z(Z_active: Set[FrozenSet[str]], unit_drop_edges: bool) -> D
                 A[(P, Q)] = 1
     return A
 
+# Place this function BEFORE mcmc_map_search in your script
+def propose_swap_Z_and_update_A_incrementally(
+    current_struct: "Structure",
+    rng: random.Random,
+    candidate_pool: List[FrozenSet[str]],
+    block_swap_sizes: Tuple[int, ...],
+    fitch_probs: Dict[FrozenSet[str], float]
+) -> Tuple[Optional["Structure"], Optional[Dict]]:
+    """
+    Proposes swapping 'm' potencies and incrementally updates the edge set 'A'.
+    This version is fixed to handle duplicate selections from random.choices.
+    """
+    root = frozenset(current_struct.S)
+    acti = [P for P in current_struct.Z_active if len(P) >= 2 and P != root]
+    ina = [P for P in candidate_pool if P not in current_struct.Z_active]
+
+    if not acti or not ina:
+        return None, None
+
+    # m = rng.choice(block_swap_sizes)
+    # m = max(1, min(m, len(acti), len(ina)))
+    m = 1
+    
+    # --- Weighted sampling (this part is fine) ---
+    add_weights = [fitch_probs.get(p, 0.001) for p in ina]
+    drop_weights = [1.0 - fitch_probs.get(p, 0.999) for p in acti]
+    
+    add = random.choices(ina, weights=add_weights, k=m)
+    drop = random.choices(acti, weights=drop_weights, k=m)
+
+    new_struct = current_struct.clone()
+
+    #
+    # V V V THIS IS THE FIX V V V
+    #
+    # By converting `drop` to a `set`, we automatically remove any duplicates
+    # before we start iterating, preventing the KeyError.
+    for P_rm in set(drop):
+        new_struct.Z_active.remove(P_rm)
+    
+    # Similarly, ensure `add` potencies are unique to avoid issues
+    for P_add in set(add):
+        new_struct.Z_active.add(P_add)
+    
+    # Prune edges related to ANY of the dropped potencies
+    drop_set = set(drop)
+    new_struct.A = {edge: 1 for edge in new_struct.A if not (edge[0] in drop_set or edge[1] in drop_set)}
+    
+    # Wire up the newly added (and unique) potencies
+    for P_add in set(add):
+        for P_other in new_struct.Z_active:
+            if P_add == P_other: continue
+            if admissible_edge(P_add, P_other, new_struct.unit_drop):
+                new_struct.A[(P_add, P_other)] = 1
+            if admissible_edge(P_other, P_add, new_struct.unit_drop):
+                new_struct.A[(P_other, P_add)] = 1
+
+    # new_struct.recompute_reach()
+    
+    # The details can still show the original samples if you wish
+    details = {'drop': drop, 'add': add}
+    return new_struct, details
 
 # ====== MCMC over Z (potency sets). A is deterministic (all admissible edges). ======
 # Initial mcmc map search (no fitch, pure random)
@@ -1347,7 +1201,7 @@ def mcmc_map_search(
     S: List[str],
     trees: List["TreeNode"],
     leaf_type_maps: List[Dict[str,str]],
-    all_B_sets: List[Dict[TreeNode, Set[str]]],
+    all_B_sets: List[Dict[TreeNode, Set[str]]], # <--- ADD HERE
     priors: "Priors",
     *,
     unit_drop_edges: bool = True,
@@ -1366,6 +1220,13 @@ def mcmc_map_search(
     Target:  log P(Z) + sum_T log P(T | Z)    (edge prior removed)
     Proposals are symmetric -> accept with min(1, exp(delta)).
     """
+
+    def make_struct_no_reach(Zset: Set[FrozenSet[str]]) -> "Structure":
+        A = _full_edges_for_Z(Zset, unit_drop_edges)
+        struct = Structure(S, Zset, A, unit_drop=unit_drop_edges)
+        # OVERWRITE the expensive transitive closure with our dummy object
+        struct.Reach = SubsetReach()
+        return struct
 
     rng = random.Random(seed)
 
@@ -1401,8 +1262,8 @@ def mcmc_map_search(
         if sprinkle:
             Z0.update(rng.sample(candidate_pool, sprinkle))
     
-    current = make_struct(Z0)
-    curr_score, _ = score_structure_no_edge_prior(current, trees, leaf_type_maps, all_B_sets, priors)
+    current = make_struct_no_reach(Z0)
+    curr_score, _ = score_structure_no_edge_prior(current, trees, leaf_type_maps,all_B_sets, priors)
     if not math.isfinite(curr_score):
         # for _ in range(20):
         #     # Fallback logic is unchanged
@@ -1429,8 +1290,8 @@ def mcmc_map_search(
         if not act or not ina:
             return None, None
 
-        m = rng.choice(block_swap_sizes)
-        m = max(1, min(m, len(act), len(ina)))
+        # m = rng.choice(block_swap_sizes)
+        # m = max(1, min(m, len(act), len(ina)))
         m = 1
 
         # Weighted sampling for ADDING potencies
@@ -1529,25 +1390,47 @@ def mcmc_map_search(
 
         if priors.potency_mode == "fixed_k" and fixed_k is not None:
             # <<<--- CHANGE 3: Unpack the details from the proposal call --->>>
-            Zprop, proposal_details = propose_fixed_k_swap(current.Z_active)
+            # Zprop, proposal_details = propose_fixed_k_swap(current.Z_active)
             # Zprop, proposal_details = propose_jaccard_swap(current.Z_active)
 
             # if proposal_details:
             #     dropped_str = ", ".join(pot_str(p) for p in proposal_details['drop'])
             #     added_str = ", ".join(pot_str(p) for p in proposal_details['add'])
             #     print(f"\n[Proposing Swap]: {dropped_str} -> {added_str}")
+            prop_struct, proposal_details = propose_swap_Z_and_update_A_incrementally(
+                current_struct=current,
+                rng=rng,
+                candidate_pool=candidate_pool,
+                block_swap_sizes=block_swap_sizes,
+                fitch_probs=fitch_probs
+            )
+
+            if prop_struct:
+                # Overwrite the Reach object on the new proposal
+                prop_struct.Reach = SubsetReach()
         else:
             Zprop = propose_toggle(current.Z_active)
 
-        if Zprop is None:
+        # if Zprop is None:
+        #     tried += 1
+        #     if progress:
+        #         iterator.set_postfix({"logpost": f"{curr_score:.3f}", "acc": f"{(accepts/max(1,tried)):.2f}"})
+        #     continue
+
+        if prop_struct is None:
             tried += 1
             if progress:
-                iterator.set_postfix({"logpost": f"{curr_score:.3f}", "acc": f"{(accepts/max(1,tried)):.2f}"})
+                iterator.set_postfix({
+                    "logpost": f"{curr_score:.3f}",
+                    "acc": f"{(accepts/max(1,tried)):.2f}"
+                })
             continue
 
-        prop_struct = make_struct(Zprop)
-        prop_score, _ = score_structure_no_edge_prior(prop_struct, trees, leaf_type_maps, all_B_sets, priors)
+        # prop_struct = make_struct(Zprop)
+        # prop_score, _ = score_structure_no_edge_prior(prop_struct, trees, leaf_type_maps, all_B_sets, priors)
         
+        prop_score, _ = score_structure_no_edge_prior(prop_struct, trees, leaf_type_maps, all_B_sets, priors)
+
         accept = False
         if math.isfinite(prop_score):
             delta = prop_score - curr_score
@@ -2027,6 +1910,7 @@ def mcmc_map_search_only_A(
     S: List[str],
     trees: List["TreeNode"],
     leaf_type_maps: List[Dict[str, str]],
+    all_B_sets: List[Dict[TreeNode, Set[str]]], # <--- ADD HERE
     priors: "Priors",
     *,
     unit_drop_edges: bool = True,
@@ -2076,7 +1960,7 @@ def mcmc_map_search_only_A(
     # Z = seed_Z()
     A = seed_A(Z)
     current = Structure(S, Z, A, unit_drop=unit_drop_edges)
-    curr_score, _ = score_structure(current, trees, leaf_type_maps, priors)
+    curr_score, _ = score_structure(current, trees, leaf_type_maps, all_B_sets, priors)
     if not math.isfinite(curr_score):
         # rescue a few times
         for _ in range(20):
@@ -2244,7 +2128,7 @@ def mcmc_map_search_only_A(
                 })
             continue
 
-        prop_score, _ = score_structure(prop, trees, leaf_type_maps, priors)
+        prop_score, _ = score_structure(prop, trees, leaf_type_maps, all_B_sets, priors)
 
         accept = False
         if math.isfinite(prop_score):
@@ -2306,37 +2190,17 @@ def _mcmc_worker_A(args: tuple):
     This is the target for each parallel process.
     """
     # Unpack all the arguments passed by the main parallel function
-    (S, trees, leaf_type_maps, priors, unit_drop_edges, fixed_k,
+    (S, trees, leaf_type_maps, all_B_sets, priors, unit_drop_edges, fixed_k,
      steps, burn_in, thin, seed, progress, candidate_pool, block_swap_sizes, Z) = args
 
     # Call the MCMC sampler with the unique seed for this worker
     # Note: We disable the progress bar for worker processes to keep the console clean
     return mcmc_map_search_only_A(
-        S=S, trees=trees, leaf_type_maps=leaf_type_maps, priors=priors,
+        S=S, trees=trees, leaf_type_maps=leaf_type_maps, all_B_sets=all_B_sets, priors=priors,
         unit_drop_edges=unit_drop_edges, fixed_k=fixed_k, steps=steps,
         burn_in=burn_in, thin=thin, seed=seed, progress=True,
         candidate_pool=candidate_pool, block_swap_sizes=block_swap_sizes, Z = Z
     )
-
-# def _mcmc_worker_Z(args: tuple):
-#     """
-#     Worker function that creates a cache for a single MCMC chain.
-#     """
-#     (S, trees, leaf_type_maps, priors, unit_drop_edges, fixed_k,
-#      steps, burn_in, thin, seed, progress, candidate_pool, block_swap_sizes, fitch_probs) = args
-
-#     # <<< CHANGE 1: CREATE A CACHE FOR THIS WORKER >>>
-#     # This cache is local to this single MCMC chain.
-#     score_cache = {}
-
-#     return mcmc_map_search(
-#         S=S, trees=trees, leaf_type_maps=leaf_type_maps, priors=priors,
-#         unit_drop_edges=unit_drop_edges, fixed_k=fixed_k, steps=steps,
-#         burn_in=burn_in, thin=thin, seed=seed, progress=True,
-#         candidate_pool=candidate_pool, block_swap_sizes=block_swap_sizes,
-#         fitch_probs=fitch_probs,
-#         score_cache=score_cache  # <<< CHANGE 2: PASS THE CACHE
-#     )
 
 def _mcmc_worker_Z(args: tuple):
     """
@@ -2360,6 +2224,7 @@ def run_mcmc_only_A_parallel (
     S: List[str],
     trees: List["TreeNode"],
     leaf_type_maps: List[Dict[str, str]],
+    all_B_sets: List[Dict[TreeNode, Set[str]]], # <--- ADD HERE
     priors: "Priors",
     *,
     unit_drop_edges: bool = True,
@@ -2386,7 +2251,7 @@ def run_mcmc_only_A_parallel (
     tasks = []
     for seed in seeds:
         tasks.append((
-            S, trees, leaf_type_maps, priors, unit_drop_edges, fixed_k,
+            S, trees, leaf_type_maps, all_B_sets, priors, unit_drop_edges, fixed_k,
             steps, burn_in, thin, seed, True, candidate_pool, block_swap_sizes, Z
         ))
 
@@ -2447,7 +2312,7 @@ def run_mcmc_only_Z_parallel(
     tasks = []
     for seed in seeds:
         tasks.append((
-            S, trees, leaf_type_maps, priors, unit_drop_edges, fixed_k,
+            S, trees, leaf_type_maps, all_B_sets, priors, unit_drop_edges, fixed_k,
             steps, burn_in, thin, seed, True, candidate_pool, block_swap_sizes, fitch_probs
         ))
 
@@ -2955,7 +2820,7 @@ def _build_ZA_from_txt(adj: dict, comp_map: dict, unit_drop_edges: bool):
                 A[(Pu, Qv)] = 1
     return Z_active, A, sorted(base_types), potency_id_to_set
 
-def score_given_map_and_trees(txt_path: str, trees, meta_paths, fixed_k,
+def score_given_map_and_trees(txt_path: str, trees, meta_paths, all_B_sets, fixed_k,
                               unit_drop_edges = False):
     """
     Parses the input file and builds the structure F=(Z,A),
@@ -3020,6 +2885,7 @@ def score_given_map_and_trees(txt_path: str, trees, meta_paths, fixed_k,
         struct=struct,
         trees=trees,
         leaf_type_maps=leaf_type_maps,
+        all_B_sets=all_B_sets,
         priors=dummy_priors,
         prune_eps=0.0
     )
@@ -3218,44 +3084,44 @@ def check_convergence(all_chain_stats: List[Dict], rhat_threshold: float = 1.05)
         print("          Consider increasing the number of steps and/or the burn-in period.")
     print("-----------------------------")
 
-# def plot_mcmc_traces(
-#     all_stats: List[Dict],
-#     burn_in: int,
-#     thin: int,
-#     title: str,
-#     output_path: str
-# ):
-#     """
-#     Plots the log posterior score traces from multiple MCMC chains.
+def plot_mcmc_traces(
+    all_stats: List[Dict],
+    burn_in: int,
+    thin: int,
+    title: str,
+    output_path: str
+):
+    """
+    Plots the log posterior score traces from multiple MCMC chains.
 
-#     Args:
-#         all_stats: List of stats dictionaries from each parallel chain.
-#         burn_in: The number of burn-in iterations.
-#         thin: The thinning interval.
-#         title: The title for the plot.
-#         output_path: The file path to save the plot image.
-#     """
-#     fig, ax = plt.subplots(figsize=(12, 7))
+    Args:
+        all_stats: List of stats dictionaries from each parallel chain.
+        burn_in: The number of burn-in iterations.
+        thin: The thinning interval.
+        title: The title for the plot.
+        output_path: The file path to save the plot image.
+    """
+    fig, ax = plt.subplots(figsize=(12, 7))
 
-#     for i, stats in enumerate(all_stats):
-#         scores = stats.get('scores', [])
-#         if not scores:
-#             continue
+    for i, stats in enumerate(all_stats):
+        scores = stats.get('scores', [])
+        if not scores:
+            continue
         
-#         # Calculate the actual iteration numbers for the x-axis
-#         iterations = range(burn_in, burn_in + len(scores) * thin, thin)
-#         ax.plot(iterations, scores, label=f'Chain {i+1}', alpha=0.8)
+        # Calculate the actual iteration numbers for the x-axis
+        iterations = range(burn_in, burn_in + len(scores) * thin, thin)
+        ax.plot(iterations, scores, label=f'Chain {i+1}', alpha=0.8)
 
-#     ax.set_title(title, fontsize=16)
-#     ax.set_xlabel("MCMC Iteration", fontsize=12)
-#     ax.set_ylabel("Log Posterior Score", fontsize=12)
-#     ax.legend()
-#     ax.grid(True, linestyle='--', alpha=0.6)
+    ax.set_title(title, fontsize=16)
+    ax.set_xlabel("MCMC Iteration", fontsize=12)
+    ax.set_ylabel("Log Posterior Score", fontsize=12)
+    ax.legend()
+    ax.grid(True, linestyle='--', alpha=0.6)
     
-#     plt.tight_layout()
-#     plt.savefig(output_path, dpi=300)
-#     plt.close(fig)
-#     print(f"📈 Plot saved to {output_path}")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.close(fig)
+    print(f"📈 Plot saved to {output_path}")
 
 
 def process_case(map_idx: int, type_num: int, cells_n: int,
@@ -3267,6 +3133,8 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
 
     # load trees + maps
     trees, leaf_type_maps, S = read_trees_and_maps(tree_paths, meta_paths)
+
+    all_B_sets = [compute_B_sets(tree, ltm) for tree, ltm in zip(trees, leaf_type_maps)]
 
     # run MAP search
     # a compact candidate pool keeps things fast & well-mixed
@@ -3287,6 +3155,7 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
         S=S,
         trees=trees,
         leaf_type_maps=leaf_type_maps,
+        all_B_sets=all_B_sets,  # <--- PASS IT HERE
         priors=priors,
         unit_drop_edges=False,
         fixed_k=priors.fixed_k if priors.potency_mode == "fixed_k" else None,
@@ -3300,20 +3169,36 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
         fitch_probs = fitch_probs_dict
     )
 
-    # if all_stats_Z and log_dir:
-    #     plot_mcmc_traces(
-    #         all_stats=all_stats_Z,
-    #         burn_in=(iters * 15) // 100,
-    #         thin=10,
-    #         title=f"MCMC Trace for Potency Sets (Z) - Map {idx4}, Cells {cells_n}",
-    #         output_path=os.path.join(log_dir, f"trace_Z_type{type_num}_{idx4}_cells{cells_n}.png")
-    #     )
+    if all_stats_Z and log_dir:
+        plot_mcmc_traces(
+            all_stats=all_stats_Z,
+            burn_in=(iters * 15) // 100,
+            thin=10,
+            title=f"MCMC Trace for Potency Sets (Z) - Map {idx4}, Cells {cells_n}",
+            output_path=os.path.join(log_dir, f"trace_Z_type{type_num}_{idx4}_cells{cells_n}.png")
+        )
+
+    # Z_active = {
+    #     frozenset(['-13', '-14']),
+    #     frozenset(['-4', '-6']),
+    #     frozenset(['-10', '-13', '-14']),
+    #     frozenset(['-14', '-4', '-6', '-8']),
+    #     frozenset(['-10', '-13', '-14', '-4', '-6', '-8']),
+    #     frozenset(['-4']),
+    #     frozenset(['-6']),
+    #     frozenset(['-8']),
+    #     frozenset(['-10']),
+    #     frozenset(['-13']),
+    #     frozenset(['-14']),
+    # }
+
+    # iters = iters*3
 
     bestF, best_score, all_chain_stats = run_mcmc_only_A_parallel(
         S=S,
         trees=trees,
         leaf_type_maps=leaf_type_maps,
-        
+        all_B_sets=all_B_sets,  # <--- AND PASS IT HERE
         priors=priors,
         unit_drop_edges=False,
         fixed_k=priors.fixed_k if priors.potency_mode == "fixed_k" else None,
@@ -3325,16 +3210,17 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
         block_swap_sizes=(1, 2, 3),
         n_chains= min(os.cpu_count() - 1, restarts),  # Use the 'restarts' argument to set the number of chains
         Z = bestF_Z.Z_active
+        # Z = Z_active
     )
 
-    # if all_chain_stats and log_dir:
-    #     plot_mcmc_traces(
-    #         all_stats=all_chain_stats,
-    #         burn_in=(iters * 15) // 100,
-    #         thin=10,
-    #         title=f"MCMC Trace for Edges (A) - Map {idx4}, Cells {cells_n}",
-    #         output_path=os.path.join(log_dir, f"trace_A_type{type_num}_{idx4}_cells{cells_n}.png")
-    #     )
+    if all_chain_stats and log_dir:
+        plot_mcmc_traces(
+            all_stats=all_chain_stats,
+            burn_in=(iters * 15) // 100,
+            thin=10,
+            title=f"MCMC Trace for Edges (A) - Map {idx4}, Cells {cells_n}",
+            output_path=os.path.join(log_dir, f"trace_A_type{type_num}_{idx4}_cells{cells_n}.png")
+        )
 
     # For compatibility with your existing result processing,
     # you can get the stats of the best chain if needed,
@@ -3368,7 +3254,7 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
     predicted_sets = {p for p in bestF.Z_active if len(p) > 1}
 
     ground_truth_sets, gt_loss, gt_Z_active, gt_edges= score_given_map_and_trees(
-        fate_map_path, trees, meta_paths, fixed_k=priors.fixed_k
+        fate_map_path, trees, meta_paths, all_B_sets, fixed_k=priors.fixed_k
     )
 
     pretty_print_sets("Predicted Sets", predicted_sets)
@@ -3447,13 +3333,13 @@ def main_multi_type(type_nums=[10,14],
 
 if __name__ == "__main__":
     main_multi_type(
-        type_nums=[10],
-        maps_start=4,
-        maps_end=4,
-        cells_list=[50],
-        iters = 80,
+        type_nums=[6],
+        maps_start=6,
+        maps_end=6,
+        cells_list=[200],
+        iters = 40,
         restarts = 7,
-        fixed_k = 9,
+        fixed_k = 5,
         out_csv="checking.csv",
         log_dir="prac",
         tree_kind="graph"   # or "bin_trees" or "graph"

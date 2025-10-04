@@ -1191,8 +1191,8 @@ def mcmc_map_search(
         if not act or not ina:
             return None, None
 
-        m = rng.choice(block_swap_sizes)
-        m = max(1, min(m, len(act), len(ina)))
+        # m = rng.choice(block_swap_sizes)
+        # m = max(1, min(m, len(act), len(ina)))
         m = 1
 
         # Weighted sampling for ADDING potencies
@@ -1324,7 +1324,7 @@ def mcmc_map_search(
                 dropped_str = ", ".join(pot_str(p) for p in proposal_details['drop'])
                 added_str = ", ".join(pot_str(p) for p in proposal_details['add'])
                 # Using print() will show the message on a new line below the progress bar
-                print(f"\n[Accepted Swap]: {dropped_str} -> {added_str} | New Score: {prop_score:.3f}")
+                # print(f"\n[Accepted Swap]: {dropped_str} -> {added_str} | New Score: {prop_score:.3f}")
 
             current = prop_struct
             curr_score = prop_score
@@ -1454,7 +1454,7 @@ def mcmc_edges_only_search(
             if details:
                 edge_str = f"{pot_str(details['edge'][0])} -> {pot_str(details['edge'][1])}"
                 action_str = details['action'].capitalize()
-                print(f"[Accepted Edge]: {action_str} {edge_str} | New Score: {prop_score:.3f}")
+                # print(f"[Accepted Edge]: {action_str} {edge_str} | New Score: {prop_score:.3f}")
             current = prop
             curr_score = prop_score
             if curr_score > best_score:
@@ -1739,13 +1739,13 @@ def mcmc_map_search_with_edges(
                 # This was a successful swap move, so we print the details
                 dropped_str = ", ".join(pot_str(p) for p in last_proposal_details['drop'])
                 added_str = ", ".join(pot_str(p) for p in last_proposal_details['add'])
-                print(f"[Accepted Swap]: {dropped_str} -> {added_str} | New Score: {prop_score:.3f}")
+                # print(f"[Accepted Swap]: {dropped_str} -> {added_str} | New Score: {prop_score:.3f}")
 
             elif last_proposal_details and 'edge' in last_proposal_details:
                 edge_details = last_proposal_details
                 edge_str = f"{pot_str(edge_details['edge'][0])} -> {pot_str(edge_details['edge'][1])}"
                 action_str = edge_details['action'].capitalize()
-                print(f"[Accepted Edge]: {action_str} {edge_str} | New Score: {prop_score:.3f}")
+                # print(f"[Accepted Edge]: {action_str} {edge_str} | New Score: {prop_score:.3f}")
 
             current = prop
             curr_score = prop_score
@@ -2021,7 +2021,7 @@ def mcmc_map_search_only_A(
                 edge_details = last_proposal_details
                 edge_str = f"{pot_str(edge_details['edge'][0])} -> {pot_str(edge_details['edge'][1])}"
                 action_str = edge_details['action'].capitalize()
-                print(f"[Accepted Edge]: {action_str} {edge_str} | New Score: {prop_score:.3f}")
+                # print(f"[Accepted Edge]: {action_str} {edge_str} | New Score: {prop_score:.3f}")
 
             current = prop
             curr_score = prop_score
@@ -3050,6 +3050,8 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
             output_path=os.path.join(log_dir, f"trace_Z_type{type_num}_{idx4}_cells{cells_n}.png")
         )
 
+    # iters = (iters*7)/2
+
     bestF, best_score, all_chain_stats = run_mcmc_only_A_parallel(
         S=S,
         trees=trees,
@@ -3187,14 +3189,14 @@ def main_multi_type(type_nums=[10,14],
 
 if __name__ == "__main__":
     main_multi_type(
-        type_nums=[10],
+        type_nums=[6],
         maps_start=3,
-        maps_end=6,
-        cells_list=[50],
-        iters = 80,
+        maps_end=3,
+        cells_list=[200],
+        iters = 20,
         restarts = 7,
-        fixed_k = 9,
-        out_csv="10_50_3_6_mcmc2step.csv",
+        fixed_k = 5,
+        out_csv="6_200_2_5_mcmc2step.csv",
         log_dir="prac",
         tree_kind="graph"   # or "bin_trees" or "graph"
     )
