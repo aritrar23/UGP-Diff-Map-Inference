@@ -859,37 +859,65 @@ class Priors:
                 else: k_log += math.log(1-self.pi_P)
             return k_log
 
-    def log_prior_A(self, Z_active:Set[FrozenSet[str]], A:Dict[Tuple[FrozenSet[str],FrozenSet[str]],int], unit_drop=True)->float:
-        # ------------------------------------------------------------
-        # Computes log P(A | Z): the log prior over EDGE EXISTENCE between active potencies.
-        #
-        # Inputs:
-        #   - Z_active: set of active potencies (nodes in the potency DAG)
-        #   - A: adjacency dictionary mapping (P,Q) -> {0,1}, indicating whether edge P->Q is present
-        #   - unit_drop: if True, an admissible edge must drop EXACTLY one fate (|P\Q| == 1);
-        #                otherwise any monotone subset drop (Q ⊂ P) is admissible.
-        #
-        # Prior:
-        #   - For every admissible pair (P,Q):
-        #         A_{P->Q} ~ Bernoulli(rho)
-        #     So:
-        #         log P(A|Z) = ∑_{(P,Q) admissible} [ A_{P->Q} log(rho) + (1 - A_{P->Q}) log(1 - rho) ]
-        #
-        # Notes:
-        #   - "Admissible" enforces graph shape constraints (subset-monotone and possibly unit-drop).
-        #   - If an edge (P,Q) is not admissible, it does not contribute to the product/sum at all.
-        # ------------------------------------------------------------
-        labels=list(Z_active)
-        # admissible set is pairs with subset monotone (and optionally unit-drop)
-        logp=0.0
-        for P in labels:
-            for Q in labels:
-                if admissible_edge(P,Q,unit_drop):
-                    # a == 1 if the edge is present in A, else 0
-                    a = 1 if A.get((P,Q),0)==1 else 0
-                    # add Bernoulli log-prob for this edge
-                    logp += math.log(self.rho) if a==1 else math.log(1-self.rho)
-        return logp
+    # def log_prior_A(self, Z_active:Set[FrozenSet[str]], A:Dict[Tuple[FrozenSet[str],FrozenSet[str]],int], unit_drop=True)->float:
+    #     # ------------------------------------------------------------
+    #     # Computes log P(A | Z): the log prior over EDGE EXISTENCE between active potencies.
+    #     #
+    #     # Inputs:
+    #     #   - Z_active: set of active potencies (nodes in the potency DAG)
+    #     #   - A: adjacency dictionary mapping (P,Q) -> {0,1}, indicating whether edge P->Q is present
+    #     #   - unit_drop: if True, an admissible edge must drop EXACTLY one fate (|P\Q| == 1);
+    #     #                otherwise any monotone subset drop (Q ⊂ P) is admissible.
+    #     #
+    #     # Prior:
+    #     #   - For every admissible pair (P,Q):
+    #     #         A_{P->Q} ~ Bernoulli(rho)
+    #     #     So:
+    #     #         log P(A|Z) = ∑_{(P,Q) admissible} [ A_{P->Q} log(rho) + (1 - A_{P->Q}) log(1 - rho) ]
+    #     #
+    #     # Notes:
+    #     #   - "Admissible" enforces graph shape constraints (subset-monotone and possibly unit-drop).
+    #     #   - If an edge (P,Q) is not admissible, it does not contribute to the product/sum at all.
+    #     # ------------------------------------------------------------
+    #     labels=list(Z_active)
+    #     # admissible set is pairs with subset monotone (and optionally unit-drop)
+    #     logp=0.0
+    #     for P in labels:
+    #         for Q in labels:
+    #             if admissible_edge(P,Q,unit_drop):
+    #                 # a == 1 if the edge is present in A, else 0
+    #                 a = 1 if A.get((P,Q),0)==1 else 0
+    #                 # add Bernoulli log-prob for this edge
+    #                 logp += math.log(self.rho) if a==1 else math.log(1-self.rho)
+    #     return logp
+
+    # --- Replace the existing log_prior_A method in your Priors class ---
+
+    def log_prior_A(self, Z_active: Set[FrozenSet[str]], A: Dict[Tuple[FrozenSet[str], FrozenSet[str]], int],
+                    unit_drop: bool = True, num_admissible_edges: Optional[int] = None) -> float:
+        """
+        Computes log P(A | Z).
+        Uses a fast O(1) calculation if num_admissible_edges is provided,
+        otherwise falls back to an O(|Z|^2) calculation.
+        """
+        if num_admissible_edges is not None:
+            # --- FAST PATH (for A-only MCMC) ---
+            num_edges_present = len(A)
+            log_rho = math.log(self.rho)
+            log_one_minus_rho = math.log(1 - self.rho)
+            
+            logp = (num_edges_present * log_rho +
+                    (num_admissible_edges - num_edges_present) * log_one_minus_rho)
+            return logp
+        else:
+            # --- SLOW PATH (Fallback for Z-MCMC) ---
+            logp = 0.0
+            for P in Z_active:
+                for Q in Z_active:
+                    if admissible_edge(P, Q, unit_drop):
+                        a = 1 if A.get((P, Q), 0) == 1 else 0
+                        logp += math.log(self.rho) if a == 1 else math.log(1 - self.rho)
+            return logp
 
 # ----------------------------
 # Structure container and proposals
@@ -937,6 +965,30 @@ class Structure:
         # Called by all propose_* methods after they mutate Z_active or A.
         self.labels_list=self._sorted_labels()
         self.Reach = transitive_closure(self.labels_list, self.A)
+
+    def update_reach_add_edge(self, u: FrozenSet[str], v: FrozenSet[str]):
+        """
+        Incrementally and efficiently updates the Reach dictionary AFTER 
+        an edge u -> v has been added to the graph A.
+        """
+        # 1. Find all nodes 'x' that can reach u (the "ancestors" of u).
+        ancestors_of_u = {x for x, reach_set in self.Reach.items() if u in reach_set}
+        
+        # 2. Find all nodes 'y' that v can reach (the "descendants" of v).
+        #    We use .get() for safety, though v should always be in Reach.
+        descendants_of_v = self.Reach.get(v, set())
+        
+        # 3. For each ancestor 'x', add all of v's descendants to its reachability set.
+        #    This creates all the new paths: (x -> ... -> u -> v -> ... -> y).
+        for x in ancestors_of_u:
+            self.Reach[x].update(descendants_of_v)
+
+    def update_reach_remove_edge(self, u: FrozenSet[str], v: FrozenSet[str]):
+        """
+        Handles the Reach update for edge removal. For safety and simplicity,
+        this falls back to a full re-computation.
+        """
+        self.recompute_reach()
 
     def clone(self)->"Structure":
         # Return a deep-enough copy to test/accept a proposal without mutating the current state.
@@ -1035,16 +1087,37 @@ def score_structure(struct: Structure,
                     leaf_type_maps: List[Dict[str,str]],
                     all_B_sets: List[Dict[TreeNode, Set[str]]], # <--- ACCEPT IT HERE
                     priors: Priors,
+                    num_admissible_edges: Optional[int] = None,  # <--- ADD NEW ARGUMENT
+                    precomputed_logp_Z: Optional[float] = None,  # <--- ADD NEW ARGUMENT
                     prune_eps: float = 0.0) -> Tuple[float, List[float]]:
     # Compute the (log) posterior score of a candidate structure F = (Z_active, A).
 
-    # ---- Prior over structure F ----
-    logp = priors.log_prior_Z(struct.S, struct.Z_active)
-    if not math.isfinite(logp):
-        return float("-inf"), []
-    # Add the edge prior, which is the key difference in this function
-    logp += priors.log_prior_A(struct.Z_active, struct.A, unit_drop=struct.unit_drop)
 
+    if precomputed_logp_Z is not None:
+        logp_Z = precomputed_logp_Z
+    else:
+        logp_Z = priors.log_prior_Z(struct.S, struct.Z_active)
+    
+    if not math.isfinite(logp_Z):
+        return float("-inf"), []
+        
+    logp_A = priors.log_prior_A(
+        struct.Z_active, struct.A,
+        unit_drop=struct.unit_drop,
+        num_admissible_edges=num_admissible_edges
+    )
+    
+    logp = logp_Z + logp_A
+    # # ---- Prior over structure F ----
+    # logp = priors.log_prior_Z(struct.S, struct.Z_active)
+    # if not math.isfinite(logp):
+    #     return float("-inf"), []
+    # # Add the edge prior, which is the key difference in this function
+    # logp += priors.log_prior_A(
+    #         struct.Z_active, struct.A,
+    #         unit_drop=struct.unit_drop,
+    #         num_admissible_edges=num_admissible_edges # <--- PASS IT ALONG
+    #     )
     # ---- Likelihood over all trees ----
     logLs = []
     for i, (root, leaf_to_type, B_sets) in enumerate(zip(trees, leaf_type_maps, all_B_sets)):
@@ -1083,11 +1156,12 @@ def score_structure_no_edge_prior(struct: Structure,
                     leaf_type_maps: List[Dict[str,str]],
                     all_B_sets: List[Dict[TreeNode, Set[str]]], # <--- ACCEPT IT HERE
                     priors: Priors,
+                    precomputed_logp_Z: float, # <--- CHANGE: This is now a required argument
                     prune_eps: float = 0.0) -> Tuple[float, List[float]]:
     # print("\n" + "="*50)
     # print("=== STARTING SCORE_STRUCTURE ===")
     
-    logp = priors.log_prior_Z(struct.S, struct.Z_active)
+    logp = precomputed_logp_Z # Use the provided value directly
     # print(f"[DEBUG score_structure] Log Prior P(Z): {logp}")
     if not math.isfinite(logp):
         # print("[DEBUG score_structure] P(Z) is -inf. ABORTING.")
@@ -1263,7 +1337,8 @@ def mcmc_map_search(
             Z0.update(rng.sample(candidate_pool, sprinkle))
     
     current = make_struct_no_reach(Z0)
-    curr_score, _ = score_structure_no_edge_prior(current, trees, leaf_type_maps,all_B_sets, priors)
+    current_logp_Z = priors.log_prior_Z(S, current.Z_active)
+    curr_score, _ = score_structure_no_edge_prior(current, trees, leaf_type_maps,all_B_sets, priors, precomputed_logp_Z=current_logp_Z)
     if not math.isfinite(curr_score):
         # for _ in range(20):
         #     # Fallback logic is unchanged
@@ -1404,6 +1479,7 @@ def mcmc_map_search(
                 block_swap_sizes=block_swap_sizes,
                 fitch_probs=fitch_probs
             )
+            proposed_logp_Z = current_logp_Z 
 
             if prop_struct:
                 # Overwrite the Reach object on the new proposal
@@ -1429,7 +1505,7 @@ def mcmc_map_search(
         # prop_struct = make_struct(Zprop)
         # prop_score, _ = score_structure_no_edge_prior(prop_struct, trees, leaf_type_maps, all_B_sets, priors)
         
-        prop_score, _ = score_structure_no_edge_prior(prop_struct, trees, leaf_type_maps, all_B_sets, priors)
+        prop_score, _ = score_structure_no_edge_prior(prop_struct, trees, leaf_type_maps, all_B_sets, priors, proposed_logp_Z)
 
         accept = False
         if math.isfinite(prop_score):
@@ -1449,6 +1525,8 @@ def mcmc_map_search(
 
             current = prop_struct
             curr_score = prop_score
+            current_logp_Z = proposed_logp_Z # IMPORTANT: Update the prior score
+            
             if curr_score > best_score:
                 best_struct = current.clone()
                 best_score = curr_score
@@ -1943,6 +2021,17 @@ def mcmc_map_search_only_A(
     """
     rng = random.Random(seed)
 
+    all_admissible_pairs = [
+        (P, Q)
+        for P in Z
+        for Q in Z
+        if admissible_edge(P, Q, unit_drop_edges)
+    ]
+
+    num_admissible_edges = len(all_admissible_pairs) # Get the total count once
+
+    logp_Z_fixed = priors.log_prior_Z(S, Z)
+
     # ---------- candidate pool for multis ----------
     if candidate_pool is None:
         candidate_pool = collect_fitch_multis(S, trees, leaf_type_maps)
@@ -1960,14 +2049,14 @@ def mcmc_map_search_only_A(
     # Z = seed_Z()
     A = seed_A(Z)
     current = Structure(S, Z, A, unit_drop=unit_drop_edges)
-    curr_score, _ = score_structure(current, trees, leaf_type_maps, all_B_sets, priors)
+    curr_score, _ = score_structure(current, trees, leaf_type_maps, all_B_sets, priors, num_admissible_edges=num_admissible_edges,precomputed_logp_Z=logp_Z_fixed)
     if not math.isfinite(curr_score):
         # rescue a few times
         for _ in range(20):
             # Z = seed_Z(); 
             A = seed_A(Z)
             current = Structure(S, Z, A, unit_drop=unit_drop_edges)
-            curr_score, _ = score_structure(current, trees, leaf_type_maps, priors)
+            curr_score, _ = score_structure(current, trees, leaf_type_maps, priors, num_admissible_edges=num_admissible_edges,precomputed_logp_Z=logp_Z_fixed)
             if math.isfinite(curr_score):
                 break
         if not math.isfinite(curr_score):
@@ -1975,6 +2064,11 @@ def mcmc_map_search_only_A(
 
     best_struct = current.clone()
     best_score = curr_score
+
+
+    if not all_admissible_pairs:
+        print("[Warning] No admissible edges found for the given Z_fixed set. MCMC will not move.")
+
 
     # ---------- symmetric proposal kernels ----------
     def admissible_pairs(Zset: Set[FrozenSet[str]]) -> List[Tuple[FrozenSet[str],FrozenSet[str]]]:
@@ -2110,25 +2204,53 @@ def mcmc_map_search_only_A(
         iterator = trange(steps, desc="MCMC (A-only)", leave=True)
 
     for it in iterator:
-        prop = None
-        last_proposal_details = None
+
+
+        if not all_admissible_pairs:
+            # If there are no possible edges, we can't do anything.
+            break
+
+        # 1. Propose a change by picking a random edge to flip
+        edge_to_flip = rng.choice(all_admissible_pairs)
+        u, v = edge_to_flip
         
-        prop, last_proposal_details = prop_edge_toggle(current, rng)
-        # prop = prop_edge_toggle(current)
+        action = 'added' if current.A.get(edge_to_flip, 0) == 0 else 'removed'
+        last_proposal_details = {'edge': edge_to_flip, 'action': action}
+        
+        prop = current.clone()
+        
+        # Apply the toggle based on the action
+        if action == 'added':
+            # Use the fast, incremental update for additions.
+            prop.update_reach_add_edge(u, v)
+        else: # action == 'removed'
+            # Use the safe, full re-computation for removals.
+            prop.update_reach_remove_edge(u, v)
+        
+        prop.recompute_reach()
 
-        if prop is None:
-            # count as tried but no change
-            tried += 1
-            if progress:
-                iterator.set_postfix({
-                    "logpost": f"{curr_score:.3f}",
-                    "best": f"{best_score:.3f}",
-                    "acc": f"{(accepts/max(1,tried)):.2f}",
-                    "E": f"{sum(prop.A.values()) if prop else sum(current.A.values())}"
-                })
-            continue
+        # 2. Score the new structure using the parallel scorer
+        prop_score, _ = score_structure(prop, trees, leaf_type_maps, all_B_sets, priors, num_admissible_edges=num_admissible_edges, precomputed_logp_Z=logp_Z_fixed)
+        
+        # prop = None
+        # last_proposal_details = None
+        
+        # prop, last_proposal_details = prop_edge_toggle(current, rng)
+        # # prop = prop_edge_toggle(current)
 
-        prop_score, _ = score_structure(prop, trees, leaf_type_maps, all_B_sets, priors)
+        # if prop is None:
+        #     # count as tried but no change
+        #     tried += 1
+        #     if progress:
+        #         iterator.set_postfix({
+        #             "logpost": f"{curr_score:.3f}",
+        #             "best": f"{best_score:.3f}",
+        #             "acc": f"{(accepts/max(1,tried)):.2f}",
+        #             "E": f"{sum(prop.A.values()) if prop else sum(current.A.values())}"
+        #         })
+        #     continue
+
+        # prop_score, _ = score_structure(prop, trees, leaf_type_maps, all_B_sets, priors)
 
         accept = False
         if math.isfinite(prop_score):
@@ -3179,20 +3301,20 @@ def process_case(map_idx: int, type_num: int, cells_n: int,
         )
 
     # Z_active = {
-    #     frozenset(['-13', '-14']),
-    #     frozenset(['-4', '-6']),
-    #     frozenset(['-10', '-13', '-14']),
-    #     frozenset(['-14', '-4', '-6', '-8']),
-    #     frozenset(['-10', '-13', '-14', '-4', '-6', '-8']),
+    #     frozenset(['-14', '-15']),
+    #     frozenset(['-14', '-2']),
+    #     frozenset(['-3', '-4']),
+    #     frozenset(['-14', '-2', '-3', '-4']),
+    #     frozenset(['-10', '-14', '-15', '-2', '-3', '-4']),
+    #     frozenset(['-2']),
+    #     frozenset(['-3']),
     #     frozenset(['-4']),
-    #     frozenset(['-6']),
-    #     frozenset(['-8']),
     #     frozenset(['-10']),
-    #     frozenset(['-13']),
     #     frozenset(['-14']),
+    #     frozenset(['-15']),
     # }
 
-    # iters = iters*3
+    iters = iters + 20
 
     bestF, best_score, all_chain_stats = run_mcmc_only_A_parallel(
         S=S,
@@ -3334,10 +3456,10 @@ def main_multi_type(type_nums=[10,14],
 if __name__ == "__main__":
     main_multi_type(
         type_nums=[6],
-        maps_start=6,
-        maps_end=6,
+        maps_start=4,
+        maps_end=4,
         cells_list=[200],
-        iters = 40,
+        iters = 20,
         restarts = 7,
         fixed_k = 5,
         out_csv="checking.csv",
