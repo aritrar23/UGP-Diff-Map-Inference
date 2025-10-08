@@ -2757,7 +2757,7 @@ def score_given_map_and_trees(txt_path: str, trees, meta_paths, fixed_k,
     struct = Structure(S=S_all, Z_active=Z_active, A=A, unit_drop=unit_drop_edges)
     dummy_priors = Priors(potency_mode="fixed_k", fixed_k = fixed_k, rho=0.2)
 
-    _, per_tree_logs = score_structure(
+    log_post, per_tree_logs = score_structure(
         struct=struct,
         trees=trees,
         leaf_type_maps=leaf_type_maps,
