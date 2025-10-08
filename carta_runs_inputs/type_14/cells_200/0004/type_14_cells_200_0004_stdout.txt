@@ -1,0 +1,104 @@
+=== STDOUT ===
+Set parameter Username
+Academic license - for non-commercial use only - expires 2026-09-23
+Set parameter TimeLimit to value 300
+Gurobi Optimizer version 11.0.0 build v11.0.0rc2 (linux64 - "Ubuntu 22.04.5 LTS")
+
+CPU model: Intel(R) Core(TM) Ultra 7 155H, instruction set [SSE2|AVX|AVX2]
+Thread count: 11 physical cores, 22 logical processors, using up to 22 threads
+
+Optimize a model with 1803138 rows, 127784 columns and 5366796 nonzeros
+Model fingerprint: 0x19d01c97
+Variable types: 61438 continuous, 66346 integer (66346 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 8e+03]
+  Objective range  [1e+00, 1e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 1e+00]
+Presolve removed 250665 rows and 12211 columns (presolve time = 5s) ...
+Presolve removed 315339 rows and 17009 columns (presolve time = 120s) ...
+Presolve removed 315339 rows and 17009 columns (presolve time = 120s) ...
+Presolve removed 315339 rows and 17009 columns (presolve time = 230s) ...
+Presolve removed 315339 rows and 17009 columns (presolve time = 235s) ...
+Presolve removed 315339 rows and 17009 columns
+Presolve time: 237.08s
+Presolved: 1487799 rows, 110775 columns, 4293463 nonzeros
+Variable types: 58773 continuous, 52002 integer (52002 binary)
+Root relaxation presolved: 110775 rows, 1598574 columns, 4404238 nonzeros
+
+Deterministic concurrent LP optimizer: primal simplex, dual simplex, and barrier
+Showing barrier log only...
+
+Root barrier log...
+
+Ordering time: 0.50s
+
+Barrier statistics:
+ Free vars  : 4521
+ AA' NZ     : 2.466e+06
+ Factor NZ  : 2.188e+07 (roughly 900 MB of memory)
+ Factor Ops : 4.345e+09 (less than 1 second per iteration)
+ Threads    : 8
+
+                  Objective                Residual
+Iter       Primal          Dual         Primal    Dual     Compl     Time
+   0  -2.30278385e+07 -0.00000000e+00  4.45e+04 1.00e+00  9.91e+01   250s
+   1  -1.82493064e+07  2.70422474e+04  9.98e+03 8.72e-01  7.24e+01   251s
+   2  -1.34568614e+07  3.68993119e+04  2.54e-10 5.00e-01  1.37e+01   251s
+   3  -4.76876798e+06  3.19475136e+04  2.54e-10 8.07e-02  3.28e+00   252s
+   4  -4.16435260e+05  2.97532605e+04  4.16e-10 2.15e-03  2.72e-01   252s
+   5  -1.69400424e+05  1.72812693e+04  1.69e-10 3.40e-06  1.13e-01   253s
+   6  -1.25054384e+05  1.03393692e+04  1.23e-10 1.84e-06  8.19e-02   253s
+   7  -5.51077564e+04  6.56555263e+03  5.19e-11 1.12e-06  3.73e-02   254s
+   8  -1.24260689e+04  2.99387760e+03  9.89e-12 4.93e-07  9.33e-03   255s
+   9  -8.70623767e+02  4.46665844e+02  4.56e-13 3.09e-07  7.97e-04   255s
+  10  -4.31341727e+00  1.51571868e+01  9.77e-15 1.99e-08  1.18e-05   256s
+  11  -1.21613311e-04  5.61022160e-04  3.98e-13 1.55e-09  4.13e-10   256s
+
+Barrier performed 11 iterations in 256.38 seconds (59.21 work units)
+Barrier solve interrupted - model solved by another algorithm
+
+Concurrent spin time: 3.24s (can be avoided by choosing Method=3)
+
+Solved with primal simplex
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+   13201   -0.0000000e+00   0.000000e+00   0.000000e+00    257s
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+   13201    0.0000000e+00   0.000000e+00   0.000000e+00    258s
+
+Root relaxation: objective 0.000000e+00, 13201 iterations, 17.08 seconds (10.52 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0    0.00000    0  102          -    0.00000      -     -  300s
+
+Explored 1 nodes (22606 simplex iterations) in 301.23 seconds (94.83 work units)
+Thread count was 22 (of 22 available processors)
+
+Solution count 0
+
+Time limit reached
+Best objective -, best bound 0.000000000000e+00, gap -
+
+
+=== STDERR ===
+Traceback (most recent call last):
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/bin/carta", line 8, in <module>
+    sys.exit(main_cli())
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/carta/carta.py", line 176, in main_cli
+    main(arguments)
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/carta/carta.py", line 155, in main
+    out = ilp.post_process_solution_from_node_state_labels(solved_model)
+  File "/home/nischayvagarwal/ugp/github/UGP-Diff-Map-Inference/CARTA/venv/lib/python3.10/site-packages/carta/ilp.py", line 198, in post_process_solution_from_node_state_labels
+    vals[var.varName] = var.x
+  File "src/gurobipy/var.pxi", line 125, in gurobipy.Var.__getattr__
+  File "src/gurobipy/var.pxi", line 153, in gurobipy.Var.getAttr
+  File "src/gurobipy/attrutil.pxi", line 103, in gurobipy._getattr
+AttributeError: Unable to retrieve attribute 'x'

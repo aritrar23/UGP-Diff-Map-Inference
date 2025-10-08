@@ -1,0 +1,816 @@
+[paths] fate_map_path = inputs/differentiation_maps/graph/type_10/graph_fate_map0026.txt
+[paths] tree_paths:
+    inputs/trees/graph/type_10/cells_50/0026_tree_0.txt
+    inputs/trees/graph/type_10/cells_50/0026_tree_1.txt
+    inputs/trees/graph/type_10/cells_50/0026_tree_2.txt
+    inputs/trees/graph/type_10/cells_50/0026_tree_3.txt
+    inputs/trees/graph/type_10/cells_50/0026_tree_4.txt
+[paths] meta_paths:
+    inputs/trees/graph/type_10/cells_50/0026_meta_0.txt
+    inputs/trees/graph/type_10/cells_50/0026_meta_1.txt
+    inputs/trees/graph/type_10/cells_50/0026_meta_2.txt
+    inputs/trees/graph/type_10/cells_50/0026_meta_3.txt
+    inputs/trees/graph/type_10/cells_50/0026_meta_4.txt
+init {frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-14', '-13', '-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-14', '-13', '-12'})}
+before -49.44857823572675
+after -95.43882532751407
+7.726938118285248e-220
+0
+2.042686529545644e-260
+1
+3.3789897546251006e-211
+2
+7.757234530498967e-291
+3
+2.2484619624805945e-240
+4
+scoringg : -2902.362381336465
+Restart 1/1:   0%|                                                                         | 0/50 [00:00<?, ?it/s]Swap called
+P_rm : frozenset({'-14', '-13', '-11'}) and P_add : frozenset({'-6', '-14', '-9', '-12', '-3', '-7'})
+before -49.44857823572675
+after -91.27994224415438
+7.726938118285248e-220
+0
+2.0305343914703824e-260
+1
+3.378963425570544e-211
+2
+7.757234530346678e-291
+3
+2.248461961801466e-240
+4
+scoringg : -2898.209472907725
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-6', '-14', '-9', '-12', '-3', '-7'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-14', '-13', '-12'})}
+delta : 4.152908428740375 accpet : True
+Enter changing fn
+Right global update
+Restart 1/1:   2%|▍                    | 1/50 [00:06<05:17,  6.49s/it, Best=-2898.209, Curr=-2898.209, Temp=0.995]Swap called
+P_rm : frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}) and P_add : frozenset({'-8', '-13', '-11', '-9', '-12', '-3', '-7'})
+before -49.44857823572675
+after -77.24128813487589
+0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-6', '-14', '-9', '-12', '-3', '-7'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8', '-13', '-11', '-9', '-12', '-3', '-7'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-14', '-13', '-12'})}
+delta : -inf accpet : False
+Restart 1/1:   2%|▍                    | 1/50 [00:06<05:17,  6.49s/it, Best=-2898.209, Curr=-2898.209, Temp=0.990]Swap called
+P_rm : frozenset({'-14', '-13', '-12'}) and P_add : frozenset({'-8', '-13', '-6', '-14', '-4'})
+before -49.44857823572675
+after -86.89791560948049
+7.726938118285248e-220
+0
+2.0305343655879763e-260
+1
+3.3789370961963184e-211
+2
+7.757234445913262e-291
+3
+2.248461961801466e-240
+4
+scoringg : -2893.8274540888574
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-6', '-14', '-9', '-12', '-3', '-7'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : 4.3820188188674365 accpet : True
+Enter changing fn
+Right global update
+Restart 1/1:   6%|█▎                   | 3/50 [00:12<03:10,  4.05s/it, Best=-2893.827, Curr=-2893.827, Temp=0.985]Swap called
+P_rm : frozenset({'-13', '-11', '-12'}) and P_add : frozenset({'-13', '-11', '-6', '-12'})
+before -49.44857823572675
+after -82.51588897480661
+5.4677372509452175e-220
+0
+2.580740187200965e-261
+1
+7.559636263524049e-212
+2
+3.328486408228188e-293
+3
+2.580993821034544e-241
+4
+scoringg : -2900.967341689819
+{frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-6', '-14', '-9', '-12', '-3', '-7'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-13', '-11', '-6', '-12'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -7.139887600961629 accpet : False
+Restart 1/1:   8%|█▋                   | 4/50 [00:19<03:44,  4.88s/it, Best=-2893.827, Curr=-2893.827, Temp=0.980]Swap called
+P_rm : frozenset({'-6', '-14', '-9', '-12', '-3', '-7'}) and P_add : frozenset({'-14', '-11', '-3', '-12'})
+before -49.44857823572675
+after -86.6747720581663
+7.726938118285248e-220
+0
+2.0305343655879763e-260
+1
+3.3789370961963184e-211
+2
+7.757234445913262e-291
+3
+2.248461961801466e-240
+4
+scoringg : -2893.604310537543
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-14', '-11', '-3', '-12'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : 0.22314355131447883 accpet : True
+Enter changing fn
+Right global update
+Restart 1/1:  10%|██                   | 5/50 [00:25<04:02,  5.39s/it, Best=-2893.604, Curr=-2893.604, Temp=0.975]Swap called
+P_rm : frozenset({'-8', '-7'}) and P_add : frozenset({'-8', '-6', '-14', '-9', '-4', '-12'})
+before -49.44857823572675
+after -86.18105190230324
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-14', '-11', '-3', '-12'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-8', '-6', '-14', '-9', '-4', '-12'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -inf accpet : False
+Restart 1/1:  12%|██▌                  | 6/50 [00:26<02:48,  3.83s/it, Best=-2893.604, Curr=-2893.604, Temp=0.970]Swap called
+P_rm : frozenset({'-14', '-11', '-3', '-12'}) and P_add : frozenset({'-11', '-8'})
+before -49.44857823572675
+after -86.00534140422366
+7.726938118285248e-220
+0
+2.0305343655879763e-260
+1
+3.3789370961963184e-211
+2
+7.757234445913262e-291
+3
+2.248461961801466e-240
+4
+scoringg : -2892.9348798836004
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : 0.669430653942527 accpet : True
+Enter changing fn
+Right global update
+Restart 1/1:  14%|██▉                  | 7/50 [00:31<03:02,  4.25s/it, Best=-2892.935, Curr=-2892.935, Temp=0.966]Swap called
+P_rm : frozenset({'-13', '-11'}) and P_add : frozenset({'-14', '-13', '-3'})
+before -49.44857823572675
+after -84.39590349178955
+3.6691719747729134e-220
+0
+1.1083077229301589e-260
+1
+2.5390993383862583e-211
+2
+4.1516037039992134e-291
+3
+1.1697740214685435e-240
+4
+scoringg : -2894.239972128446
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-14', '-13', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -1.3050922448455822 accpet : False
+Restart 1/1:  16%|███▎                 | 8/50 [00:37<03:25,  4.90s/it, Best=-2892.935, Curr=-2892.935, Temp=0.961]Swap called
+P_rm : frozenset({'-11', '-14', '-13', '-12', '-3'}) and P_add : frozenset({'-14', '-9', '-3'})
+before -49.44857823572675
+after -76.34871392961907
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-9', '-3'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -inf accpet : False
+Restart 1/1:  18%|███▊                 | 9/50 [00:38<02:25,  3.54s/it, Best=-2892.935, Curr=-2892.935, Temp=0.956]Swap called
+P_rm : frozenset({'-8', '-7'}) and P_add : frozenset({'-13', '-9', '-4', '-3', '-7'})
+before -49.44857823572675
+after -85.2884776970464
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-9', '-4', '-3', '-7'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -inf accpet : False
+Restart 1/1:  20%|████                | 10/50 [00:38<01:44,  2.62s/it, Best=-2892.935, Curr=-2892.935, Temp=0.951]Swap called
+P_rm : frozenset({'-13', '-11', '-12'}) and P_add : frozenset({'-6', '-14', '-9', '-12', '-3', '-7'})
+before -49.44857823572675
+after -81.62331476954978
+5.4677372509452175e-220
+0
+2.580740187200965e-261
+1
+7.559636263524049e-212
+2
+3.328486408228188e-293
+3
+2.580993821034544e-241
+4
+scoringg : -2900.074767484562
+{frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-6', '-14', '-9', '-12', '-3', '-7'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -7.139887600961629 accpet : False
+Restart 1/1:  22%|████▍               | 11/50 [00:45<02:25,  3.73s/it, Best=-2892.935, Curr=-2892.935, Temp=0.946]Swap called
+P_rm : frozenset({'-13', '-11'}) and P_add : frozenset({'-14', '-11', '-3', '-8'})
+before -49.44857823572675
+after -84.61904704310376
+3.6691719747729134e-220
+0
+1.1083077229301589e-260
+1
+2.5390993383862583e-211
+2
+4.1516037039992134e-291
+3
+1.1697740214685435e-240
+4
+scoringg : -2894.4631156797604
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-14', '-11', '-3', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -1.528235796160061 accpet : False
+Restart 1/1:  24%|████▊               | 12/50 [00:51<02:51,  4.52s/it, Best=-2892.935, Curr=-2892.935, Temp=0.942]Swap called
+P_rm : frozenset({'-14', '-13', '-11', '-12'}) and P_add : frozenset({'-12', '-8'})
+before -49.44857823572675
+after -77.73500829073895
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-12', '-8'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -inf accpet : False
+Restart 1/1:  26%|█████▏              | 13/50 [00:52<02:08,  3.48s/it, Best=-2892.935, Curr=-2892.935, Temp=0.937]Swap called
+P_rm : frozenset({'-8', '-13', '-6', '-14', '-4'}) and P_add : frozenset({'-8', '-13', '-6', '-11', '-3'})
+before -49.44857823572675
+after -86.45162850685209
+7.726938118285248e-220
+0
+2.0305343655879763e-260
+1
+3.3789370961963184e-211
+2
+7.757234445913262e-291
+3
+2.248461961801466e-240
+4
+scoringg : -2893.381166986229
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-3'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'})}
+delta : -0.4462871026285029 accpet : False
+Restart 1/1:  28%|█████▌              | 14/50 [00:58<02:35,  4.32s/it, Best=-2892.935, Curr=-2892.935, Temp=0.932]Swap called
+P_rm : frozenset({'-13', '-11'}) and P_add : frozenset({'-6', '-14', '-12', '-3', '-7'})
+before -49.44857823572675
+after -84.61904704310376
+3.6691719747729134e-220
+0
+1.1083077229301589e-260
+1
+2.5390993383862583e-211
+2
+4.1516037039992134e-291
+3
+1.1697740214685435e-240
+4
+scoringg : -2894.4631156797604
+{frozenset({'-6', '-14', '-12', '-3', '-7'}), frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -1.528235796160061 accpet : False
+Restart 1/1:  30%|██████              | 15/50 [01:03<02:37,  4.51s/it, Best=-2892.935, Curr=-2892.935, Temp=0.928]Swap called
+P_rm : frozenset({'-13', '-11', '-12'}) and P_add : frozenset({'-8', '-11', '-14', '-4', '-12', '-3', '-7'})
+before -49.44857823572675
+after -82.29274542349239
+5.4677372509452175e-220
+0
+2.580740187200965e-261
+1
+7.559636263524049e-212
+2
+3.328486408228188e-293
+3
+2.580993821034544e-241
+4
+scoringg : -2900.7441981385045
+{frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-8', '-11', '-14', '-4', '-12', '-3', '-7'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -7.809318254904156 accpet : False
+Restart 1/1:  32%|██████▍             | 16/50 [01:10<02:52,  5.06s/it, Best=-2892.935, Curr=-2892.935, Temp=0.923]Swap called
+P_rm : frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}) and P_add : frozenset({'-6', '-14', '-9', '-4', '-12', '-3', '-7'})
+before -49.44857823572675
+after -72.46040745080823
+0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-6', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -inf accpet : False
+Restart 1/1:  32%|██████▍             | 16/50 [01:10<02:52,  5.06s/it, Best=-2892.935, Curr=-2892.935, Temp=0.918]Swap called
+P_rm : frozenset({'-14', '-13', '-11', '-12'}) and P_add : frozenset({'-14', '-4', '-6', '-8'})
+before -49.44857823572675
+after -78.40443894468157
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-14', '-4', '-6', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -inf accpet : False
+Restart 1/1:  36%|███████▏            | 18/50 [01:11<01:35,  2.98s/it, Best=-2892.935, Curr=-2892.935, Temp=0.914]Swap called
+P_rm : frozenset({'-13', '-11'}) and P_add : frozenset({'-8', '-11', '-14', '-4', '-12'})
+before -49.44857823572675
+after -84.84219059441797
+3.6691719747729134e-220
+0
+1.1083077229301589e-260
+1
+2.5390993383862583e-211
+2
+4.1516037039992134e-291
+3
+1.1697740214685435e-240
+4
+scoringg : -2894.6862592310745
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-8', '-11', '-14', '-4', '-12'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -1.751379347474085 accpet : False
+Restart 1/1:  38%|███████▌            | 19/50 [01:17<01:57,  3.79s/it, Best=-2892.935, Curr=-2892.935, Temp=0.909]Swap called
+P_rm : frozenset({'-13', '-12'}) and P_add : frozenset({'-6', '-14', '-9', '-4', '-3'})
+before -49.44857823572675
+after -83.23275268198387
+5.44758793416455e-279
+0
+3.6023866285195425e-307
+1
+2.5319265648045445e-274
+2
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-6', '-14', '-9', '-4', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -inf accpet : False
+Restart 1/1:  40%|████████            | 20/50 [01:22<02:01,  4.05s/it, Best=-2892.935, Curr=-2892.935, Temp=0.905]Swap called
+P_rm : frozenset({'-13', '-11', '-12'}) and P_add : frozenset({'-13', '-14', '-9', '-4', '-12', '-3', '-7'})
+before -49.44857823572675
+after -82.0696018721782
+5.4677372509452175e-220
+0
+2.580740187200965e-261
+1
+7.559636263524049e-212
+2
+3.328486408228188e-293
+3
+2.580993821034544e-241
+4
+scoringg : -2900.5210545871905
+{frozenset({'-11'}), frozenset({'-13', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+delta : -7.586174703590132 accpet : False
+Restart 1/1:  42%|████████▍           | 21/50 [01:28<02:15,  4.66s/it, Best=-2892.935, Curr=-2892.935, Temp=0.900]Swap called
+P_rm : frozenset({'-8', '-13', '-6', '-14', '-4'}) and P_add : frozenset({'-13', '-6', '-12', '-3', '-7'})
+before -49.44857823572675
+after -86.22848495553788
+7.726938118285248e-220
+0
+2.0305343655879763e-260
+1
+3.3789370961963184e-211
+2
+7.757234445913262e-291
+3
+2.248461961801466e-240
+4
+scoringg : -2893.158023434915
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-13', '-6', '-12', '-3', '-7'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'})}
+delta : -0.22314355131447883 accpet : True
+Restart 1/1:  44%|████████▊           | 22/50 [01:33<02:12,  4.74s/it, Best=-2892.935, Curr=-2893.158, Temp=0.896]Swap called
+P_rm : frozenset({'-13', '-12'}) and P_add : frozenset({'-8', '-13', '-14', '-12', '-7'})
+before -49.44857823572675
+after -83.45589623329809
+5.44758793416455e-279
+0
+3.6023866285195425e-307
+1
+2.5319265648045445e-274
+2
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-13', '-11'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8', '-13', '-14', '-12', '-7'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-6', '-12', '-3', '-7'})}
+delta : -inf accpet : False
+Restart 1/1:  46%|█████████▏          | 23/50 [01:38<02:08,  4.77s/it, Best=-2892.935, Curr=-2893.158, Temp=0.891]Swap called
+P_rm : frozenset({'-11', '-14', '-13', '-12', '-3'}) and P_add : frozenset({'-8', '-9', '-12', '-3', '-7'})
+before -49.44857823572675
+after -77.2412881348759
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-13', '-11'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8', '-9', '-12', '-3', '-7'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-6', '-12', '-3', '-7'})}
+delta : -inf accpet : False
+Restart 1/1:  48%|█████████▌          | 24/50 [01:38<01:31,  3.53s/it, Best=-2892.935, Curr=-2893.158, Temp=0.887]Swap called
+P_rm : frozenset({'-13', '-11'}) and P_add : frozenset({'-8', '-13', '-6', '-11', '-7'})
+before -49.44857823572675
+after -85.2884776970464
+3.6691719747729134e-220
+0
+1.1083077229301589e-260
+1
+2.5390993383862583e-211
+2
+4.1516037039992134e-291
+3
+1.1697740214685435e-240
+4
+scoringg : -2895.132546333703
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-7'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-6', '-12', '-3', '-7'})}
+delta : -1.9745228987881092 accpet : False
+Restart 1/1:  50%|██████████          | 25/50 [01:45<01:48,  4.35s/it, Best=-2892.935, Curr=-2893.158, Temp=0.882]Swap called
+P_rm : frozenset({'-13', '-11', '-12'}) and P_add : frozenset({'-14', '-8', '-7'})
+before -49.44857823572675
+after -81.40017121823557
+5.4677372509452175e-220
+0
+2.580740187200965e-261
+1
+7.559636263524049e-212
+2
+3.328486408228188e-293
+3
+2.580993821034544e-241
+4
+scoringg : -2899.851623933248
+{frozenset({'-14', '-8', '-7'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-13', '-11'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-6', '-12', '-3', '-7'})}
+delta : -6.693600498333126 accpet : False
+Restart 1/1:  52%|██████████▍         | 26/50 [01:51<01:57,  4.90s/it, Best=-2892.935, Curr=-2893.158, Temp=0.878]Swap called
+P_rm : frozenset({'-11', '-8'}) and P_add : frozenset({'-13', '-6', '-11', '-14', '-9', '-4'})
+before -49.44857823572675
+after -87.34420271210891
+7.726938118285248e-220
+0
+2.0305343655879763e-260
+1
+3.3789370961963184e-211
+2
+7.757234445913262e-291
+3
+2.248461961801466e-240
+4
+scoringg : -2894.273741191486
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-13', '-11'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-6', '-12', '-3', '-7'})}
+delta : -1.11571775657103 accpet : True
+Restart 1/1:  54%|██████████▊         | 27/50 [01:57<02:01,  5.30s/it, Best=-2892.935, Curr=-2894.274, Temp=0.873]Swap called
+P_rm : frozenset({'-14', '-13', '-11', '-12'}) and P_add : frozenset({'-11', '-12'})
+before -49.44857823572675
+after -79.52015670125263
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-13', '-6', '-12', '-3', '-7'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-12'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'})}
+delta : -inf accpet : False
+Restart 1/1:  56%|███████████▏        | 28/50 [01:58<01:28,  4.04s/it, Best=-2892.935, Curr=-2894.274, Temp=0.869]Swap called
+P_rm : frozenset({'-13', '-11'}) and P_add : frozenset({'-6', '-11', '-14', '-4', '-3', '-7'})
+before -49.44857823572675
+after -85.95790835098903
+3.6691719747729134e-220
+0
+1.1083077229301589e-260
+1
+2.5390993383862583e-211
+2
+4.1516037039992134e-291
+3
+1.1697740214685435e-240
+4
+scoringg : -2895.8019769876455
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-13', '-6', '-12', '-3', '-7'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-6', '-11', '-14', '-4', '-3', '-7'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'})}
+delta : -1.5282357961596063 accpet : True
+Restart 1/1:  58%|███████████▌        | 29/50 [02:03<01:30,  4.33s/it, Best=-2892.935, Curr=-2895.802, Temp=0.865]Swap called
+P_rm : frozenset({'-13', '-11', '-12'}) and P_add : frozenset({'-8', '-13', '-14', '-9', '-4', '-7'})
+before -49.44857823572675
+after -82.02216881894356
+2.5255504388439878e-220
+0
+1.3920316327829237e-261
+1
+3.505157576836889e-212
+2
+1.2504713566172758e-293
+3
+1.2167200771075743e-241
+4
+scoringg : -2904.362939782043
+{frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-8', '-13', '-14', '-9', '-4', '-7'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-6', '-11', '-14', '-4', '-3', '-7'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-6', '-12', '-3', '-7'})}
+delta : -8.56096279439771 accpet : False
+Restart 1/1:  60%|████████████        | 30/50 [02:09<01:38,  4.91s/it, Best=-2892.935, Curr=-2895.802, Temp=0.860]Swap called
+P_rm : frozenset({'-6', '-11', '-14', '-4', '-3', '-7'}) and P_add : frozenset({'-4', '-3'})
+before -49.44857823572675
+after -85.06533414573218
+3.6691719747729134e-220
+0
+1.1083077229301589e-260
+1
+2.5390993383862583e-211
+2
+4.1516037039992134e-291
+3
+1.1697740214685435e-240
+4
+scoringg : -2894.909402782389
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3'}), frozenset({'-4'}), frozenset({'-13', '-6', '-12', '-3', '-7'})}
+delta : 0.8925742052565511 accpet : True
+Restart 1/1:  62%|████████████▍       | 31/50 [02:16<01:40,  5.31s/it, Best=-2892.935, Curr=-2894.909, Temp=0.856]Swap called
+P_rm : frozenset({'-13', '-12'}) and P_add : frozenset({'-13', '-6', '-11', '-14', '-9', '-4', '-3', '-7'})
+before -49.44857823572675
+after -83.18531962874923
+9.038503319952072e-281
+0
+6.136586197486311e-308
+1
+1.0732203234036331e-274
+2
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3'}), frozenset({'-4'}), frozenset({'-13', '-6', '-12', '-3', '-7'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4', '-3', '-7'})}
+delta : -inf accpet : False
+Restart 1/1:  64%|████████████▊       | 32/50 [02:20<01:33,  5.17s/it, Best=-2892.935, Curr=-2894.909, Temp=0.852]Swap called
+P_rm : frozenset({'-14', '-13', '-11', '-12'}) and P_add : frozenset({'-8', '-11', '-9', '-12', '-7'})
+before -49.44857823572675
+after -77.91071878881851
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3'}), frozenset({'-4'}), frozenset({'-13', '-6', '-12', '-3', '-7'}), frozenset({'-8', '-11', '-9', '-12', '-7'})}
+delta : -inf accpet : False
+Restart 1/1:  66%|█████████████▏      | 33/50 [02:22<01:06,  3.93s/it, Best=-2892.935, Curr=-2894.909, Temp=0.848]Swap called
+P_rm : frozenset({'-11', '-14', '-13', '-12', '-3'}) and P_add : frozenset({'-8', '-13', '-6', '-11', '-9', '-4', '-7'})
+before -49.44857823572675
+after -78.13386234013274
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-9', '-4', '-7'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3'}), frozenset({'-4'}), frozenset({'-13', '-6', '-12', '-3', '-7'})}
+delta : -inf accpet : False
+Restart 1/1:  68%|█████████████▌      | 34/50 [02:22<00:46,  2.89s/it, Best=-2892.935, Curr=-2894.909, Temp=0.843]Swap called
+P_rm : frozenset({'-11', '-14', '-13', '-12', '-3'}) and P_add : frozenset({'-13', '-11', '-4', '-12', '-7'})
+before -49.44857823572675
+after -77.91071878881851
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3'}), frozenset({'-4'}), frozenset({'-13', '-6', '-12', '-3', '-7'}), frozenset({'-13', '-11', '-4', '-12', '-7'})}
+delta : -inf accpet : False
+Restart 1/1:  70%|██████████████      | 35/50 [02:22<00:32,  2.17s/it, Best=-2892.935, Curr=-2894.909, Temp=0.839]Swap called
+P_rm : frozenset({'-13', '-11', '-12'}) and P_add : frozenset({'-13', '-6', '-9', '-4', '-12', '-7'})
+before -49.44857823572675
+after -81.12959461368672
+2.5255504388439878e-220
+0
+1.3920316327829237e-261
+1
+3.505157576836889e-212
+2
+1.2504713566172758e-293
+3
+1.2167200771075743e-241
+4
+scoringg : -2903.470365576786
+{frozenset({'-11'}), frozenset({'-13', '-6', '-9', '-4', '-12', '-7'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3'}), frozenset({'-4'}), frozenset({'-13', '-6', '-12', '-3', '-7'})}
+delta : -8.560962794397255 accpet : False
+Restart 1/1:  72%|██████████████▍     | 36/50 [02:29<00:47,  3.41s/it, Best=-2892.935, Curr=-2894.909, Temp=0.835]Swap called
+P_rm : frozenset({'-11', '-14', '-13', '-12', '-3'}) and P_add : frozenset({'-6', '-14', '-9', '-4', '-12', '-3', '-7'})
+before -49.44857823572675
+after -78.13386234013274
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-6', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3'}), frozenset({'-4'}), frozenset({'-13', '-6', '-12', '-3', '-7'})}
+delta : -inf accpet : False
+Restart 1/1:  74%|██████████████▊     | 37/50 [02:29<00:32,  2.53s/it, Best=-2892.935, Curr=-2894.909, Temp=0.831]Swap called
+P_rm : frozenset({'-8', '-7'}) and P_add : frozenset({'-13', '-11', '-12', '-3', '-7'})
+before -49.44857823572675
+after -84.79475754118334
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-4', '-3'}), frozenset({'-4'}), frozenset({'-13', '-6', '-12', '-3', '-7'}), frozenset({'-13', '-11', '-12', '-3', '-7'})}
+delta : -inf accpet : False
+Restart 1/1:  76%|███████████████▏    | 38/50 [02:30<00:23,  1.93s/it, Best=-2892.935, Curr=-2894.909, Temp=0.827]Swap called
+P_rm : frozenset({'-13', '-6', '-12', '-3', '-7'}) and P_add : frozenset({'-9', '-13', '-6'})
+before -49.44857823572675
+after -84.61904704310376
+3.6691719747729134e-220
+0
+1.1083077229301589e-260
+1
+2.5390993383862583e-211
+2
+4.1516037039992134e-291
+3
+1.1697740214685435e-240
+4
+scoringg : -2894.4631156797604
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-9', '-13', '-6'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3'}), frozenset({'-4'})}
+delta : 0.4462871026285029 accpet : True
+Restart 1/1:  78%|███████████████▌    | 39/50 [02:36<00:35,  3.25s/it, Best=-2892.935, Curr=-2894.463, Temp=0.822]Swap called
+P_rm : frozenset({'-14', '-13', '-11', '-12'}) and P_add : frozenset({'-13', '-11', '-9', '-4', '-3'})
+before -49.44857823572675
+after -77.46443168619011
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-13', '-11', '-9', '-4', '-3'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-9', '-13', '-6'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3'}), frozenset({'-4'})}
+delta : -inf accpet : False
+Restart 1/1:  80%|████████████████    | 40/50 [02:37<00:25,  2.58s/it, Best=-2892.935, Curr=-2894.463, Temp=0.818]Swap called
+P_rm : frozenset({'-13', '-11', '-12'}) and P_add : frozenset({'-4', '-3', '-8', '-7'})
+before -49.44857823572675
+after -80.4601639597441
+2.5255504388439878e-220
+0
+1.3920316327829237e-261
+1
+3.505157576836889e-212
+2
+1.2504713566172758e-293
+3
+1.2167200771075743e-241
+4
+scoringg : -2902.8009349228437
+{frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-4', '-3', '-8', '-7'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-9', '-13', '-6'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3'}), frozenset({'-4'})}
+delta : -8.337819243083231 accpet : False
+Restart 1/1:  82%|████████████████▍   | 41/50 [02:44<00:33,  3.72s/it, Best=-2892.935, Curr=-2894.463, Temp=0.814]Swap called
+P_rm : frozenset({'-8', '-7'}) and P_add : frozenset({'-14', '-13', '-8', '-7'})
+before -49.44857823572675
+after -83.67903978461229
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-9', '-13', '-6'}), frozenset({'-14', '-13', '-8', '-7'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-4', '-3'}), frozenset({'-4'})}
+delta : -inf accpet : False
+Restart 1/1:  84%|████████████████▊   | 42/50 [02:44<00:22,  2.76s/it, Best=-2892.935, Curr=-2894.463, Temp=0.810]Swap called
+P_rm : frozenset({'-11', '-14', '-13', '-12', '-3'}) and P_add : frozenset({'-8', '-6', '-14', '-12', '-3'})
+before -49.44857823572675
+after -77.01814458356168
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-9', '-13', '-6'}), frozenset({'-8', '-6', '-14', '-12', '-3'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3'}), frozenset({'-4'})}
+delta : -inf accpet : False
+Restart 1/1:  86%|█████████████████▏  | 43/50 [02:45<00:14,  2.08s/it, Best=-2892.935, Curr=-2894.463, Temp=0.806]Swap called
+P_rm : frozenset({'-4', '-3'}) and P_add : frozenset({'-4', '-3', '-6'})
+before -49.44857823572675
+after -84.84219059441799
+3.6691719747729134e-220
+0
+1.1083077229301589e-260
+1
+2.5390993383862583e-211
+2
+4.1516037039992134e-291
+3
+1.1697740214685435e-240
+4
+scoringg : -2894.6862592310745
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-9', '-13', '-6'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3', '-6'}), frozenset({'-4'})}
+delta : -0.22314355131402408 accpet : True
+Restart 1/1:  88%|█████████████████▌  | 44/50 [02:49<00:16,  2.78s/it, Best=-2892.935, Curr=-2894.686, Temp=0.802]Swap called
+P_rm : frozenset({'-9', '-13', '-6'}) and P_add : frozenset({'-11', '-3', '-8', '-7'})
+before -49.44857823572675
+after -85.0653341457322
+3.6691719747729134e-220
+0
+1.1083077229301589e-260
+1
+2.5390993383862583e-211
+2
+4.1516037039992134e-291
+3
+1.1697740214685435e-240
+4
+scoringg : -2894.909402782389
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-11', '-3', '-8', '-7'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3', '-6'}), frozenset({'-4'})}
+delta : -0.22314355131447883 accpet : False
+Restart 1/1:  90%|██████████████████  | 45/50 [02:55<00:19,  3.85s/it, Best=-2892.935, Curr=-2894.686, Temp=0.798]Swap called
+P_rm : frozenset({'-13', '-12'}) and P_add : frozenset({'-8', '-13', '-11', '-14', '-4', '-12', '-3', '-7'})
+before -49.44857823572675
+after -83.63160673137764
+9.038503319952072e-281
+0
+6.136586197486311e-308
+1
+1.0732203234036331e-274
+2
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-14'}), frozenset({'-9', '-13', '-6'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8', '-13', '-11', '-14', '-4', '-12', '-3', '-7'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3', '-6'}), frozenset({'-4'})}
+delta : -inf accpet : False
+Restart 1/1:  92%|██████████████████▍ | 46/50 [03:00<00:16,  4.16s/it, Best=-2892.935, Curr=-2894.686, Temp=0.794]Swap called
+P_rm : frozenset({'-9', '-13', '-6'}) and P_add : frozenset({'-14', '-4', '-12', '-7'})
+before -49.44857823572675
+after -84.84219059441799
+3.6691719747729134e-220
+0
+1.1083077229301589e-260
+1
+2.5390993383862583e-211
+2
+4.1516037039992134e-291
+3
+1.1697740214685435e-240
+4
+scoringg : -2894.6862592310745
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-14', '-4', '-12', '-7'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3', '-6'}), frozenset({'-4'})}
+delta : 0.0 accpet : True
+Restart 1/1:  94%|██████████████████▊ | 47/50 [03:07<00:14,  4.84s/it, Best=-2892.935, Curr=-2894.686, Temp=0.790]Swap called
+P_rm : frozenset({'-4', '-3', '-6'}) and P_add : frozenset({'-13', '-12', '-7'})
+before -49.44857823572675
+after -85.06533414573218
+3.6691719747729134e-220
+0
+1.1083077229301589e-260
+1
+2.5390993383862583e-211
+2
+4.1516037039992134e-291
+3
+1.1697740214685435e-240
+4
+scoringg : -2894.909402782389
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-13', '-12', '-7'}), frozenset({'-14', '-4', '-12', '-7'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'})}
+delta : -0.22314355131447883 accpet : False
+Restart 1/1:  96%|███████████████████▏| 48/50 [03:13<00:10,  5.33s/it, Best=-2892.935, Curr=-2894.686, Temp=0.786]Swap called
+P_rm : frozenset({'-13', '-11', '-12'}) and P_add : frozenset({'-9', '-13', '-11', '-3'})
+before -49.44857823572675
+after -80.23702040842988
+2.5255504388439878e-220
+0
+1.3920316327829237e-261
+1
+3.505157576836889e-212
+2
+1.2504713566172758e-293
+3
+1.2167200771075743e-241
+4
+scoringg : -2902.5777913715297
+{frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-14', '-4', '-12', '-7'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3', '-6'}), frozenset({'-4'}), frozenset({'-9', '-13', '-11', '-3'})}
+delta : -7.891532140455183 accpet : False
+Restart 1/1:  98%|███████████████████▌| 49/50 [03:18<00:05,  5.34s/it, Best=-2892.935, Curr=-2894.686, Temp=0.782]Swap called
+P_rm : frozenset({'-13', '-12'}) and P_add : frozenset({'-14', '-12', '-3'})
+before -49.44857823572675
+after -81.84645832086397
+9.038503319952072e-281
+0
+6.136586197486311e-308
+1
+1.0732203234036331e-274
+2
+0.0
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13', '-6', '-11', '-14', '-9', '-4'}), frozenset({'-14', '-4', '-12', '-7'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-14', '-12', '-3'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4', '-3', '-6'}), frozenset({'-4'})}
+delta : -inf accpet : False
+Restart 1/1: 100%|████████████████████| 50/50 [03:23<00:00,  4.08s/it, Best=-2892.935, Curr=-2894.686, Temp=0.778]
+before -49.44857823572675
+after -86.00534140422366
+7.726938118285248e-220
+0
+2.0305343655879763e-260
+1
+3.3789370961963184e-211
+2
+7.757234445913262e-291
+3
+2.248461961801466e-240
+4
+scoringg : -2892.9348798836004
+{frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-11', '-8'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-8', '-13', '-6', '-14', '-4'})}
+init {frozenset({'-13', '-11', '-12'}), frozenset({'-11'}), frozenset({'-14', '-13', '-11'}), frozenset({'-8', '-13', '-6', '-11', '-14', '-9', '-4', '-12', '-3', '-7'}), frozenset({'-7'}), frozenset({'-11', '-14', '-13', '-12', '-3'}), frozenset({'-13'}), frozenset({'-3'}), frozenset({'-9'}), frozenset({'-13', '-12'}), frozenset({'-14'}), frozenset({'-12'}), frozenset({'-6'}), frozenset({'-14', '-13', '-11', '-12'}), frozenset({'-8'}), frozenset({'-8', '-7'}), frozenset({'-4'}), frozenset({'-13', '-11'}), frozenset({'-14', '-13', '-12'})}
+
+=== BEST MAP for type_10, map 0026, cells_50 ===
+Active potencies (multi-type):
+   {-11,-13}
+   {-11,-8}
+   {-12,-13}
+   {-7,-8}
+   {-11,-12,-13}
+   {-11,-12,-13,-14}
+   {-11,-12,-13,-14,-3}
+   {-13,-14,-4,-6,-8}
+   {-11,-12,-13,-14,-3,-4,-6,-7,-8,-9}
+Singletons (always active):
+   {-11}
+   {-12}
+   {-13}
+   {-14}
+   {-3}
+   {-4}
+   {-6}
+   {-7}
+   {-8}
+   {-9}
+
+Edges:
+  {-12,-13} -> {-13}
+  {-11,-12,-13,-14} -> {-11}
+  {-11,-12,-13,-14} -> {-14}
+  {-11,-12,-13,-14} -> {-12,-13}
+  {-11,-12,-13,-14} -> {-11,-12,-13}
+  {-11,-12,-13,-14,-3} -> {-13}
+  {-11,-12,-13,-14,-3} -> {-3}
+  {-11,-12,-13,-14,-3} -> {-11,-13}
+  {-11,-12,-13,-14,-3} -> {-11,-12,-13}
+  {-11,-12,-13,-14,-3} -> {-11,-12,-13,-14}
+  {-11,-12,-13,-14,-3,-4,-6,-7,-8,-9} -> {-4}
+  {-11,-12,-13,-14,-3,-4,-6,-7,-8,-9} -> {-6}
+  {-11,-12,-13,-14,-3,-4,-6,-7,-8,-9} -> {-7}
+  {-11,-12,-13,-14,-3,-4,-6,-7,-8,-9} -> {-8}
+  {-11,-12,-13,-14,-3,-4,-6,-7,-8,-9} -> {-9}
+  {-11,-12,-13,-14,-3,-4,-6,-7,-8,-9} -> {-7,-8}
+  {-11,-12,-13,-14,-3,-4,-6,-7,-8,-9} -> {-11,-12,-13}
+  {-11,-12,-13,-14,-3,-4,-6,-7,-8,-9} -> {-11,-12,-13,-14,-3}
+
+Scores:
+  log posterior: -2892.934880
+  Tree 1 log P(T|F*): -504.524008
+  Tree 2 log P(T|F*): -597.963825
+  Tree 3 log P(T|F*): -484.627893
+  Tree 4 log P(T|F*): -668.003636
+  Tree 5 log P(T|F*): -551.810176
+before -49.44857823572675
+after -88.28420997060039
+6.355529356100063e-86
+0
+2.397158727999715e-125
+1
+1.393373639137277e-91
+2
+4.3724806479525893e-125
+3
+4.375496156964595e-82
+4
+scoringg : -1254.293334625327
+
+=== Ground Truth Log-likelihoods (given F from map) ===
+Tree 1: log P(T|F) = -196.172993
+Tree 2: log P(T|F) = -286.948852
+Tree 3: log P(T|F) = -209.203516
+Tree 4: log P(T|F) = -286.347806
+Tree 5: log P(T|F) = -187.335958
+Total log-likelihood = -1166.009125
+
+Predicted Sets:
+   ['-11', '-13']
+   ['-11', '-8']
+   ['-12', '-13']
+   ['-7', '-8']
+   ['-11', '-12', '-13']
+   ['-11', '-12', '-13', '-14']
+   ['-11', '-12', '-13', '-14', '-3']
+   ['-13', '-14', '-4', '-6', '-8']
+   ['-11', '-12', '-13', '-14', '-3', '-4', '-6', '-7', '-8', '-9']
+
+Ground Truth Sets:
+   ['-12', '-13']
+   ['-7', '-8']
+   ['-11', '-12', '-13']
+   ['-3', '-4', '-6']
+   ['-7', '-8', '-9']
+   ['-11', '-12', '-13', '-14']
+   ['-11', '-12', '-13', '-14', '-3']
+   ['-3', '-4', '-6', '-7', '-8', '-9']
+   ['-11', '-12', '-13', '-14', '-3', '-4', '-6', '-7', '-8', '-9']
+
+=== Jaccard Distance ===
+Jaccard Distance (Pred vs GT): 0.500000
+Predicted map's loss: -2892.934880
+Ground truth's loss: -1166.009125
+
+Summary saved to new.csv
+
+================= Summary Table =================
+Type   Map    Cells   Jaccard      GT Loss        Pred Loss
+10     26     50      0.500000     -1166.009125   -2892.934880

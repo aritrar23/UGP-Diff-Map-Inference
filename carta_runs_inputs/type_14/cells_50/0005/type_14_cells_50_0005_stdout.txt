@@ -1,0 +1,104 @@
+=== STDOUT ===
+Set parameter Username
+Academic license - for non-commercial use only - expires 2026-09-23
+Set parameter TimeLimit to value 300
+Gurobi Optimizer version 11.0.0 build v11.0.0rc2 (linux64 - "Ubuntu 22.04.5 LTS")
+
+CPU model: Intel(R) Core(TM) Ultra 7 155H, instruction set [SSE2|AVX|AVX2]
+Thread count: 11 physical cores, 22 logical processors, using up to 22 threads
+
+Optimize a model with 412998 rows, 29396 columns and 1229080 nonzeros
+Model fingerprint: 0xe44b7d0f
+Variable types: 14066 continuous, 15330 integer (15330 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 8e+03]
+  Objective range  [1e+00, 1e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 1e+00]
+Presolve removed 74235 rows and 4021 columns (presolve time = 7s) ...
+Presolve removed 74235 rows and 4021 columns
+Presolve time: 8.59s
+Presolved: 338763 rows, 25375 columns, 981637 nonzeros
+Variable types: 13455 continuous, 11920 integer (11920 binary)
+Found heuristic solution: objective 12184.000000
+Found heuristic solution: objective 12172.000000
+Root relaxation presolved: 25375 rows, 364138 columns, 1007012 nonzeros
+
+Deterministic concurrent LP optimizer: primal simplex, dual simplex, and barrier
+Showing barrier log only...
+
+Root barrier log...
+
+Ordering time: 0.08s
+
+Barrier statistics:
+ Free vars  : 1035
+ AA' NZ     : 5.647e+05
+ Factor NZ  : 4.978e+06 (roughly 200 MB of memory)
+ Factor Ops : 9.836e+08 (less than 1 second per iteration)
+ Threads    : 9
+
+                  Objective                Residual
+Iter       Primal          Dual         Primal    Dual     Compl     Time
+   0  -2.31443008e+06 -0.00000000e+00  2.16e+03 1.00e+00  4.40e+01    11s
+   1  -1.88058652e+06  5.42435453e+03  6.08e+02 8.65e-01  3.23e+01    11s
+   2  -1.36143681e+06  8.41663898e+03  3.13e-02 7.73e-02  4.03e+00    11s
+
+Barrier performed 2 iterations in 10.99 seconds (8.24 work units)
+Barrier solve interrupted - model solved by another algorithm
+
+Concurrent spin time: 0.24s (can be avoided by choosing Method=3)
+
+Solved with primal simplex
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+    2414   -0.0000000e+00   0.000000e+00   0.000000e+00     11s
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+    2414    0.0000000e+00   0.000000e+00   0.000000e+00     11s
+
+Root relaxation: objective 0.000000e+00, 2414 iterations, 1.68 seconds (1.52 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0    0.00000    0   64 12172.0000    0.00000   100%     -   16s
+H    0     0                    9844.0000000    0.00000   100%     -   17s
+H    0     0                    9245.0000000    0.00000   100%     -   17s
+     0     0    0.00000    0   96 9245.00000    0.00000   100%     -   43s
+H    0     0                    8374.0000000    0.00000   100%     -   45s
+H    0     0                    7178.0000000    0.00000   100%     -   45s
+     0     0    0.00000    0  105 7178.00000    0.00000   100%     -   86s
+H    0     0                    5872.0000000    0.00000   100%     -   88s
+H    0     0                    5870.0000000    0.00000   100%     -   89s
+     0     0    0.00000    0   99 5870.00000    0.00000   100%     -  121s
+     0     0    0.00000    0  115 5870.00000    0.00000   100%     -  199s
+H    0     0                    5542.0000000    0.00000   100%     -  201s
+     0     0    0.00000    0  104 5542.00000    0.00000   100%     -  250s
+     0     0          -    0      5542.00000    0.00000   100%     -  300s
+
+Cutting planes:
+  Cover: 6
+  Implied bound: 169
+  Clique: 866
+  MIR: 292
+  StrongCG: 2
+  Flow cover: 183
+  RLT: 548
+  Relax-and-lift: 14
+  PSD: 4
+
+Explored 1 nodes (142557 simplex iterations) in 300.02 seconds (531.69 work units)
+Thread count was 22 (of 22 available processors)
+
+Solution count 9: 5542 5870 5872 ... 12184
+
+Time limit reached
+Best objective 5.542000000000e+03, best bound 0.000000000000e+00, gap 100.0000%
+
+
+=== STDERR ===
