@@ -92,84 +92,125 @@ def kruskal_mst(nodes: Set[FrozenSet[str]], weighted_edges: List[Tuple[float, Tu
 def build_A_map_from_flow(
     viterbi_flow: Dict[Tuple[FrozenSet[str], FrozenSet[str]], float],
     Z_map: Set[FrozenSet[str]],
-    z_score_threshold: float = 1.5
+    S_nodes: Set[FrozenSet[str]], # Set of singletons
+    z_score_threshold: float = 1.5 # This argument is no longer used, but kept for compatibility
 ) -> Dict[Tuple[FrozenSet[str], FrozenSet[str]], int]:
     """
-    Builds the final A_map using the "Max-Flow Backbone + Significant Edges"
-    algorithm.
+    Builds the final A_map using the:
+    1. "Max-Flow Backbone" (MST)
+    2. "Branching Fix" (>= 2 children)
+    3. "20% Flow Rule" (Paper's heuristic)
     """
     print("Building final A_map from Viterbi flow...")
+    A_map: Dict[Tuple[FrozenSet[str], FrozenSet[str]], int] = {}
+    
     if not viterbi_flow:
         print("Warning: Viterbi flow is empty. Returning empty edge set.")
         return {}
 
-    # --- 1. Create the Undirected Weighted Edge List ---
-    # We need to find the *strongest* connection (P,Q) or (Q,P) for the MST
+    # --- 1. Step 4a: Find the "Max-Flow Backbone" (MST) ---
+    # (This section is UNCHANGED)
+    
     undirected_weights: Dict[FrozenSet[Tuple], float] = defaultdict(float)
     for (P, Q), flow in viterbi_flow.items():
-        # Use frozenset for undirected edge key
         edge_key = frozenset([P, Q])
         if flow > undirected_weights[edge_key]:
             undirected_weights[edge_key] = flow
     
-    # Format for Kruskal's
     kruskal_edge_list = []
     for edge_key, weight in undirected_weights.items():
         if weight > 0:
             P, Q = tuple(edge_key)
             kruskal_edge_list.append((weight, (P, Q)))
 
-    # --- 2. Step 4a: Find the "Max-Flow Backbone" (MST) ---
     print(f"Finding Maximum Spanning Tree (Backbone) from {len(kruskal_edge_list)} weighted edges...")
     mst_edges_undir = kruskal_mst(Z_map, kruskal_edge_list)
     
-    # The MST is undirected. We must restore directionality based on
-    # the original Viterbi flow.
-    A_backbone: Dict[Tuple[FrozenSet[str], FrozenSet[str]], int] = {}
+    print(f"Backbone (from MST) contains {len(mst_edges_undir)} directed edges:")
     for (P, Q) in mst_edges_undir:
         flow_PQ = viterbi_flow.get((P, Q), 0)
         flow_QP = viterbi_flow.get((Q, P), 0)
         
-        if flow_PQ >= flow_QP:
-            A_backbone[(P, Q)] = 1
-        else:
-            A_backbone[(Q, P)] = 1
-            
-    print(f"Backbone contains {len(A_backbone)} directed edges.")
+        edge_to_add = (P, Q) if flow_PQ >= flow_QP else (Q, P)
+        A_map[edge_to_add] = 1
+        print(f"  [MST] Added: {pot_str(edge_to_add[0])} -> {pot_str(edge_to_add[1])} (w={max(flow_PQ, flow_QP):.2f})")
 
-    # --- 3. Step 4b: Add "Significant" Secondary Paths ---
+
+    # --- 2. Step 4b: Enforce >= 2 Children Constraint ---
+    # (This section is UNCHANGED)
     
-    # Get all flows for edges *not* in the backbone
-    residual_flows = []
-    for (P, Q), flow in viterbi_flow.items():
-        if flow > 0 and (P, Q) not in A_backbone:
-            residual_flows.append(flow)
-            
-    if not residual_flows:
-        print("No significant residual edges found. Returning backbone only.")
-        return A_backbone
+    print("Enforcing >= 2 children constraint for progenitors...")
+    progenitor_nodes = Z_map - S_nodes
+    added_for_branching = 0
+    
+    for P in progenitor_nodes:
+        current_out_degree = sum(1 for (parent, child) in A_map if parent == P)
         
-    # Calculate statistical threshold
-    mean_flow = np.mean(residual_flows)
-    std_flow = np.std(residual_flows)
-    threshold = mean_flow + (z_score_threshold * std_flow)
-    
-    print(f"Residual edge stats: mean={mean_flow:.2f}, std={std_flow:.2f}")
-    print(f"Adding edges with flow > {threshold:.2f} (z > {z_score_threshold})")
-
-    # Final A_map = Backbone + Significant Residuals
-    A_map_final = dict(A_backbone)
-    count = 0
-    for (P, Q), flow in viterbi_flow.items():
-        if (P, Q) not in A_map_final and flow > threshold:
-            A_map_final[(P, Q)] = 1
-            count += 1
+        needed = 2 - current_out_degree
+        if needed <= 0:
+            continue
             
-    print(f"Added {count} significant secondary edges.")
-    print(f"Final A_map contains {len(A_map_final)} total edges.")
-    
-    return A_map_final
+        missing_edges = []
+        for Q in Z_map:
+            edge = (P, Q)
+            if P != Q and edge not in A_map and viterbi_flow.get(edge, 0) > 0:
+                missing_edges.append((viterbi_flow[edge], edge))
+        
+        missing_edges.sort(key=lambda x: x[0], reverse=True)
+        
+        edges_to_add = missing_edges[:needed]
+        
+        if edges_to_add:
+            print(f"  Fixing {pot_str(P)} (needs {needed} more):")
+            for flow, edge in edges_to_add:
+                A_map[edge] = 1
+                added_for_branching += 1
+                print(f"    [BRANCH] Added: {pot_str(edge[0])} -> {pot_str(edge[1])} (w={flow:.2f})")
+            
+    print(f"Added {added_for_branching} edges to satisfy branching constraint.")
 
+    # --- 3. Step 4c: Add Secondary Paths (Paper's 20% Rule) ---
+    # (This section is NEW and replaces the z-score logic)
+    
+    print("Adding secondary edges with > 20% of parent's total flow...")
+
+    # First, pre-calculate the total *positive* Viterbi flow out of *every* node
+    total_flow_out = defaultdict(float)
+    for (P, Q), flow in viterbi_flow.items():
+        if flow > 0:
+            total_flow_out[P] += flow
+            
+    added_for_flow = 0
+    
+    # Now, check every potential edge that passed the Viterbi step
+    for (P, Q), flow in viterbi_flow.items():
+        edge = (P, Q)
+        
+        # Check 1: Is it a positive-flow edge?
+        if flow <= 0:
+            continue
+            
+        # Check 2: Is it *already* in our map? (from MST or branching)
+        if edge in A_map:
+            continue
+            
+        # Check 3: Is the parent a progenitor? (We don't care about flow from singletons)
+        if P in S_nodes:
+            continue
+            
+        # Check 4: Does it meet the 20% threshold?
+        parent_total_flow = total_flow_out.get(P, 0)
+        
+        # Avoid division by zero, and apply the rule
+        if parent_total_flow > 0 and (flow / parent_total_flow) > 0.20:
+            A_map[edge] = 1
+            added_for_flow += 1
+            print(f"  [FLOW 20%] Added: {pot_str(P)} -> {pot_str(Q)} (w={flow:.2f} is > 20% of {parent_total_flow:.2f})")
+            
+    print(f"Added {added_for_flow} edges satisfying the 20% flow rule.")
+    print(f"Final A_map contains {len(A_map)} total edges.")
+    
+    return A_map
 
 def edges_from_A(A: Dict[Tuple[frozenset, frozenset], int]) -> Set[Tuple[frozenset, frozenset]]:
     return {e for e, v in A.items() if v == 1}
@@ -5454,9 +5495,11 @@ def process_case( # This function REPLACES your old `process_case`
         raise RuntimeError("Viterbi flow failed")
 
     # --- 5. Phase 4: Select A_map ---
+    S_nodes = {frozenset([t]) for t in S} # Get the set of singletons
     A_map_final = build_A_map_from_flow(
         viterbi_flow, 
-        Z_map, 
+        Z_map,
+        S_nodes, # <-- ADD THIS ARGUMENT
         z_score_threshold=1.5 # You can tune this
     )
     
@@ -6509,13 +6552,13 @@ if __name__ == "__main__":
 
     main_multi_type(
         type_nums=[6],
-        maps_start=3,
-        maps_end=3,
+        maps_start=2,
+        maps_end=2,
         cells_list=[50],
         iters = 10,
-        restarts = 7,
+        restarts = 1,
         fixed_k = 5,
-        out_csv="checking.csv",
-        log_dir="prac",
+        out_csv="checking_2.csv",
+        log_dir="prac_2",
         tree_kind="graph"   # or "bin_trees" or "graph"
     )
