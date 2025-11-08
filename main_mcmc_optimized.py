@@ -2290,7 +2290,7 @@ def mcmc_map_search(
                 dropped_str = ", ".join(pot_str(p) for p in proposal_details['drop'])
                 added_str = ", ".join(pot_str(p) for p in proposal_details['add'])
                 # Using print() will show the message on a new line below the progress bar
-                print(f"\n[Accepted Swap]: {dropped_str} -> {added_str} | New Score: {prop_score:.3f}")
+                # print(f"\n[Accepted Swap]: {dropped_str} -> {added_str} | New Score: {prop_score:.3f}")
 
             current = prop_struct
             curr_score = prop_score
@@ -6553,12 +6553,12 @@ if __name__ == "__main__":
     main_multi_type(
         type_nums=[6],
         maps_start=2,
-        maps_end=2,
+        maps_end=6,
         cells_list=[50],
-        iters = 10,
-        restarts = 1,
+        iters = 100,
+        restarts = 7,
         fixed_k = 5,
-        out_csv="checking_2.csv",
-        log_dir="prac_2",
+        out_csv="viterbi_6_50.csv",
+        log_dir="viterbi_6_50",
         tree_kind="graph"   # or "bin_trees" or "graph"
     )

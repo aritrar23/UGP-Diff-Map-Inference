@@ -3190,13 +3190,13 @@ def main_multi_type(type_nums=[10,14],
 if __name__ == "__main__":
     main_multi_type(
         type_nums=[6],
-        maps_start=3,
-        maps_end=3,
-        cells_list=[200],
-        iters = 20,
+        maps_start=6,
+        maps_end=6,
+        cells_list=[100],
+        iters = 10,
         restarts = 7,
         fixed_k = 5,
-        out_csv="6_200_2_5_mcmc2step.csv",
+        out_csv="checking.csv",
         log_dir="prac",
         tree_kind="graph"   # or "bin_trees" or "graph"
     )
