@@ -1,7 +1,5 @@
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import os
-import pandas as pd
-import sys
 import random
 import csv
 import json
@@ -9,7 +7,7 @@ import math, random
 import itertools
 from typing import Iterable,  Dict, Tuple, List, Optional, Set, FrozenSet, Any
 from collections import Counter, defaultdict
-from tqdm import trange, tqdm
+from tqdm import trange
 import traceback
 import numpy as np
 import matplotlib
@@ -87,7 +85,6 @@ def kruskal_mst(nodes: Set[FrozenSet[str]], weighted_edges: List[Tuple[float, Tu
             mst_edges.add((P, Q))
             
     return mst_edges
-
 
 # def build_A_map_from_flow(
 #     viterbi_flow: Dict[Tuple[FrozenSet[str], FrozenSet[str]], float],
@@ -212,6 +209,144 @@ def kruskal_mst(nodes: Set[FrozenSet[str]], weighted_edges: List[Tuple[float, Tu
     
 #     return A_map
 
+# def build_A_map_from_flow(
+#     viterbi_flow: Dict[Tuple[FrozenSet[str], FrozenSet[str]], float],
+#     Z_map: Set[FrozenSet[str]],
+#     S_nodes: Set[FrozenSet[str]], # Set of singletons
+#     z_score_threshold: float = 1.5 # This argument is no longer used, but kept for compatibility
+# ) -> Dict[Tuple[FrozenSet[str], FrozenSet[str]], int]:
+#     """
+#     Builds the final A_map using the:
+#     1. "Max-Flow Backbone" (MST)
+#     2. "Fitch Property Fix" (Union of children == Parent)
+#     3. "20% Flow Rule" (Paper's heuristic)
+#     """
+#     print("Building final A_map from Viterbi flow...")
+#     A_map: Dict[Tuple[FrozenSet[str], FrozenSet[str]], int] = {}
+    
+#     if not viterbi_flow:
+#         print("Warning: Viterbi flow is empty. Returning empty edge set.")
+#         return {}
+
+#     # --- 1. Step 4a: Find the "Max-Flow Backbone" (MST) ---
+#     # (This section is UNCHANGED)
+    
+#     undirected_weights: Dict[FrozenSet[Tuple], float] = defaultdict(float)
+#     for (P, Q), flow in viterbi_flow.items():
+#         edge_key = frozenset([P, Q])
+#         if flow > undirected_weights[edge_key]:
+#             undirected_weights[edge_key] = flow
+    
+#     kruskal_edge_list = []
+#     for edge_key, weight in undirected_weights.items():
+#         if weight > 0:
+#             P, Q = tuple(edge_key)
+#             kruskal_edge_list.append((weight, (P, Q)))
+
+#     print(f"Finding Maximum Spanning Tree (Backbone) from {len(kruskal_edge_list)} weighted edges...")
+#     mst_edges_undir = kruskal_mst(Z_map, kruskal_edge_list)
+    
+#     print(f"Backbone (from MST) contains {len(mst_edges_undir)} directed edges:")
+#     for (P, Q) in mst_edges_undir:
+#         flow_PQ = viterbi_flow.get((P, Q), 0)
+#         flow_QP = viterbi_flow.get((Q, P), 0)
+        
+#         edge_to_add = (P, Q) if flow_PQ >= flow_QP else (Q, P)
+#         A_map[edge_to_add] = 1
+#         print(f"  [MST] Added: {pot_str(edge_to_add[0])} -> {pot_str(edge_to_add[1])} (w={max(flow_PQ, flow_QP):.2f})")
+
+
+#     # --- 2. Step 4b: Enforce Fitch (Union) Property ---
+#     # (This section is NEW and replaces the ">= 2 children" logic)
+    
+#     print("Enforcing Fitch (Union) property for progenitors...")
+#     progenitor_nodes = Z_map - S_nodes
+#     added_for_fitch = 0
+    
+#     for P in progenitor_nodes:
+#         # Get current children and their union
+#         current_children = {Q for (p, Q) in A_map if p == P}
+#         if not current_children:
+#             current_union = frozenset()
+#         else:
+#             current_union = frozenset().union(*current_children)
+            
+#         if current_union == P:
+#             continue # Property already satisfied
+
+#         # We are missing fates
+#         missing_fates = P - current_union
+#         fates_still_missing = set(missing_fates) # mutable copy
+#         print(f"  Fixing {pot_str(P)} (missing {pot_str(fates_still_missing)}):")
+
+#         # Find all candidate edges that provide *any* of the original missing fates
+#         candidate_edges = []
+#         for Q in Z_map:
+#             edge = (P, Q)
+#             if P != Q and edge not in A_map:
+#                 flow = viterbi_flow.get(edge, 0)
+#                 # Check which of the *originally* missing fates this Q provides
+#                 fates_provided = Q & missing_fates 
+                
+#                 if flow > 0 and len(fates_provided) > 0:
+#                     candidate_edges.append((flow, edge, fates_provided))
+                    
+#         # Sort candidates by flow, descending
+#         candidate_edges.sort(key=lambda x: x[0], reverse=True)
+        
+#         # Greedily add edges until the set of missing fates is empty
+#         for flow, edge, fates_provided in candidate_edges:
+#             if not fates_still_missing:
+#                 break # We're done for this parent P
+            
+#             # Check if this edge *still* provides something we need
+#             newly_provided = fates_provided & fates_still_missing
+            
+#             if newly_provided:
+#                 A_map[edge] = 1
+#                 added_for_fitch += 1
+#                 fates_still_missing.difference_update(newly_provided)
+#                 print(f"    [FITCH] Added: {pot_str(edge[0])} -> {pot_str(edge[1])} (w={flow:.2f}, provides {pot_str(newly_provided)})")
+        
+#         if fates_still_missing:
+#             print(f"    [WARN] Could not satisfy Fitch for {pot_str(P)}. Still missing {pot_str(fates_still_missing)}.")
+
+#     print(f"Added {added_for_fitch} edges to satisfy Fitch property.")
+
+
+#     # --- 3. Step 4c: Add Secondary Paths (Paper's 20% Rule) ---
+#     # (This section is UNCHANGED)
+    
+#     print("Adding secondary edges with > 20% of parent's total flow...")
+
+#     total_flow_out = defaultdict(float)
+#     for (P, Q), flow in viterbi_flow.items():
+#         if flow > 0:
+#             total_flow_out[P] += flow
+            
+#     added_for_flow = 0
+    
+#     for (P, Q), flow in viterbi_flow.items():
+#         edge = (P, Q)
+        
+#         if flow <= 0:
+#             continue
+#         if edge in A_map: # Check if already added by MST or Fitch-fix
+#             continue
+#         if P in S_nodes: # Don't care about flow from singletons
+#             continue
+            
+#         parent_total_flow = total_flow_out.get(P, 0)
+        
+#         if parent_total_flow > 0 and (flow / parent_total_flow) > 0.20:
+#             A_map[edge] = 1
+#             added_for_flow += 1
+#             print(f"  [FLOW 20%] Added: {pot_str(P)} -> {pot_str(Q)} (w={flow:.2f} is > 20% of {parent_total_flow:.2f})")
+            
+#     print(f"Added {added_for_flow} edges satisfying the 20% flow rule.")
+#     print(f"Final A_map contains {len(A_map)} total edges.")
+    
+#     return A_map
 
 def build_A_map_from_flow(
     viterbi_flow: Dict[Tuple[FrozenSet[str], FrozenSet[str]], float],
@@ -471,57 +606,26 @@ class TreeNode:
 
     def __repr__(self):
         return f"Leaf({self.name})" if self.is_leaf() else f"Node({self.name}, k={len(self.children)})"
-
-
-# def parse_newick(newick: str) -> TreeNode:
-#     s = newick.strip()
-#     if not s.endswith(";"): raise ValueError("Newick must end with ';'")
-#     s = s[:-1]; i = 0
-#     def parse() -> TreeNode:
-#         nonlocal i, s
-#         if i >= len(s): raise ValueError("Unexpected end")
-#         if s[i] == '(':
-#             i += 1
-#             node = TreeNode()
-#             while True:
-#                 node.add_child(parse())
-#                 if i >= len(s): raise ValueError("Unbalanced")
-#                 if s[i] == ',':
-#                     i += 1; continue
-#                 elif s[i] == ')':
-#                     i += 1; break
-#                 else: raise ValueError(f"Unexpected char: {s[i]} at {i}")
-#             j = i
-#             while j < len(s) and s[j] not in ',()': j += 1
-#             name = s[i:j].strip()
-#             if name: node.name = name
-#             i = j
-#             return node
-#         else:
-#             j = i
-#             while j < len(s) and s[j] not in ',()': j += 1
-#             name = s[i:j].strip()
-#             if not name: raise ValueError("Leaf without name")
-#             i = j
-#             return TreeNode(name=name)
-#     root = parse()
-#     if i != len(s): raise ValueError(f"Trailing characters: '{s[i:]}'")
-#     return root
-
-class SubsetReach:
-    """
-    A dummy 'Reach' object that mimics a dictionary for the Z-only MCMC.
-    It defines reachability simply as the subset relationship, avoiding the
-    need to compute or store the full transitive closure.
-    """
-    def get(self, key: FrozenSet[str], default: List) -> List[FrozenSet[str]]:
-        # In the Z-only search, A is always fully connected, so reachability
-        # is just the subset relation.
-        # 'key' is the parent potency P. We are looking for all reachable Q's.
-        
-        # This is a placeholder that we won't actually use. The logic
-        # is handled inside the DP function directly now.
-        return default
+    
+def parse_input_file_list(path: str) -> Tuple[List[str], List[str]]:
+    """Reads a file where each line is 'tree_path\\tmeta_path'."""
+    tree_paths = []
+    meta_paths = []
+    with open(path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or '\t' not in line:
+                continue # Skip empty or invalid lines
+            try:
+                tree_p, meta_p = line.split('\t', 1)
+                tree_paths.append(tree_p.strip())
+                meta_paths.append(meta_p.strip())
+            except ValueError:
+                print(f"Skipping malformed line: {line}")
+    if not tree_paths:
+         raise ValueError(f"No valid tree/meta path pairs found in {path}")
+    # print(f"Read {len(tree_paths)} tree/meta pairs from {path}")
+    return tree_paths, meta_paths
 
 def iter_edges(root: TreeNode) -> Iterable[Tuple[TreeNode, TreeNode]]:
     """Yield (parent, child) for every directed edge in the rooted tree."""
@@ -541,8 +645,7 @@ def count_edges(root: TreeNode) -> int:
 # -------------------------
 # Union-only Fitch labeling
 # -------------------------
-
-#Added during TLS modfications
+#Modifed for handling TLS
 def assign_union_potency(root: TreeNode, leaf_type_map: Dict[str, str]) -> Set[str]:
     """
     Post-order union-only labeling. Sets `node.potency` for every node (as a Python set).
@@ -582,29 +685,6 @@ def assign_union_potency(root: TreeNode, leaf_type_map: Dict[str, str]) -> Set[s
         # ------------------------------------------------
 
         return root.potency
-
-### Pre-TLS function
-
-# def assign_union_potency(root: TreeNode, leaf_type_map: Dict[str, str]) -> Set[str]:
-#     """
-#     Post-order union-only labeling. Sets `node.potency` for every node (as a Python set).
-#     For leaves, looks up leaf_type_map[node.name] to get the leaf cell type.
-#     Returns the potency set at `root`.
-#     """
-#     if root.is_leaf():
-#         if root.name is None:
-#             raise KeyError("Leaf has no .name; cannot map to leaf_type_map")
-#         if root.name not in leaf_type_map:
-#             raise KeyError(f"Leaf name '{root.name}' not found in leaf_type_map")
-#         root.potency = {leaf_type_map[root.name]}
-#         return root.potency
-
-#     union_set: Set[str] = set()
-#     for child in root.children:
-#         child_set = assign_union_potency(child, leaf_type_map)
-#         union_set |= child_set
-#     root.potency = union_set
-#     return root.potency
 
 
 # -------------------------
@@ -680,58 +760,6 @@ def init_progenitors_union_fitch(
     Z_init |= set(top_progenitors)
 
     return dict(aggregated_transitions), Z_init
-
-import os # Make sure os is imported at the top of your file
-
-def create_virtual_star_tree(potency_set: FrozenSet[str], potency_id: str) -> Tuple[TreeNode, Dict[str, str]]:
-    """
-    Creates an in-memory star-shaped TreeNode and metadata map for a given potency set.
-
-    Args:
-        potency_set: A frozenset of cell type strings observed in this potency group.
-        potency_id: A unique identifier for this potency group (e.g., row index or 'Potency_X').
-
-    Returns:
-        A tuple: (root_node, leaf_type_map)
-            - root_node: The TreeNode representing the star tree.
-            - leaf_type_map: Metadata dictionary mapping generic leaf names to cell types.
-    """
-    if not potency_set: # Handle empty potency case if it occurs
-        root = TreeNode(name=f"Root_{potency_id}")
-        return root, {}
-
-    root = TreeNode(name=f"Root_{potency_id}")
-    leaf_type_map = {}
-
-    # Create one leaf node for each unique cell type in the set
-    for i, cell_type in enumerate(sorted(list(potency_set))):
-        # Create a unique, generic leaf name
-        leaf_name = f"{potency_id}_leaf_{cell_type}_{i}"
-        leaf_node = TreeNode(name=leaf_name)
-        root.add_child(leaf_node)
-        leaf_type_map[leaf_name] = cell_type
-
-    return root, leaf_type_map
-
-def parse_input_file_list(path: str) -> Tuple[List[str], List[str]]:
-    """Reads a file where each line is 'tree_path\\tmeta_path'."""
-    tree_paths = []
-    meta_paths = []
-    with open(path, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if not line or '\t' not in line:
-                continue # Skip empty or invalid lines
-            try:
-                tree_p, meta_p = line.split('\t', 1)
-                tree_paths.append(tree_p.strip())
-                meta_paths.append(meta_p.strip())
-            except ValueError:
-                print(f"Skipping malformed line: {line}")
-    if not tree_paths:
-         raise ValueError(f"No valid tree/meta path pairs found in {path}")
-    # print(f"Read {len(tree_paths)} tree/meta pairs from {path}")
-    return tree_paths, meta_paths
 
 def parse_newick(newick: str) -> TreeNode:
     # Helper: strip branch length and numeric-only labels
@@ -1044,20 +1072,8 @@ def dp_tree_root_table(
         # print(f"{indent}[DP] Observed types B(v): {Bv}")
         out = {}
 
-        parent_reach = []
-
-        if isinstance(Reach, SubsetReach):
-            # If it's the Z-only search, reachability is just the subset rule.
-            # 'P' is the parent label. We find all active labels 'L' that are subsets of P.
-            if P is None:
-                parent_reach = active_labels
-            else:
-                parent_reach = [L for L in active_labels if L.issubset(P)]
-
-        else:
-            # Otherwise, use the standard dictionary lookup for the A-only search.
-            parent_reach = active_labels if P is None else list(Reach.get(P, []))
-            # print(f"{indent}[DP] Node can take one of {len(parent_reach)} reachable labels.")
+        parent_reach = active_labels if P is None else list(Reach.get(P, []))
+        # print(f"{indent}[DP] Node can take one of {len(parent_reach)} reachable labels.")
 
         for L in parent_reach:
             # print(f"{indent}  - Testing label L = {L}")
@@ -1127,7 +1143,6 @@ def sparse_convolve_2d_log(A: Dict[Tuple[int,int],float], B: Dict[Tuple[int,int]
             
     # print(f"{indent}  [DEBUG log_convolve] >> Resulting table has size {len(out)}")
     return out
-
 
 def tree_marginal_from_root_table_log(C_log: Dict[Tuple[int,int],float]) -> float:
     """
@@ -1290,65 +1305,37 @@ class Priors:
                 else: k_log += math.log(1-self.pi_P)
             return k_log
 
-    # def log_prior_A(self, Z_active:Set[FrozenSet[str]], A:Dict[Tuple[FrozenSet[str],FrozenSet[str]],int], unit_drop=True)->float:
-    #     # ------------------------------------------------------------
-    #     # Computes log P(A | Z): the log prior over EDGE EXISTENCE between active potencies.
-    #     #
-    #     # Inputs:
-    #     #   - Z_active: set of active potencies (nodes in the potency DAG)
-    #     #   - A: adjacency dictionary mapping (P,Q) -> {0,1}, indicating whether edge P->Q is present
-    #     #   - unit_drop: if True, an admissible edge must drop EXACTLY one fate (|P\Q| == 1);
-    #     #                otherwise any monotone subset drop (Q ⊂ P) is admissible.
-    #     #
-    #     # Prior:
-    #     #   - For every admissible pair (P,Q):
-    #     #         A_{P->Q} ~ Bernoulli(rho)
-    #     #     So:
-    #     #         log P(A|Z) = ∑_{(P,Q) admissible} [ A_{P->Q} log(rho) + (1 - A_{P->Q}) log(1 - rho) ]
-    #     #
-    #     # Notes:
-    #     #   - "Admissible" enforces graph shape constraints (subset-monotone and possibly unit-drop).
-    #     #   - If an edge (P,Q) is not admissible, it does not contribute to the product/sum at all.
-    #     # ------------------------------------------------------------
-    #     labels=list(Z_active)
-    #     # admissible set is pairs with subset monotone (and optionally unit-drop)
-    #     logp=0.0
-    #     for P in labels:
-    #         for Q in labels:
-    #             if admissible_edge(P,Q,unit_drop):
-    #                 # a == 1 if the edge is present in A, else 0
-    #                 a = 1 if A.get((P,Q),0)==1 else 0
-    #                 # add Bernoulli log-prob for this edge
-    #                 logp += math.log(self.rho) if a==1 else math.log(1-self.rho)
-    #     return logp
-
-    # --- Replace the existing log_prior_A method in your Priors class ---
-
-    def log_prior_A(self, Z_active: Set[FrozenSet[str]], A: Dict[Tuple[FrozenSet[str], FrozenSet[str]], int],
-                    unit_drop: bool = True, num_admissible_edges: Optional[int] = None) -> float:
-        """
-        Computes log P(A | Z).
-        Uses a fast O(1) calculation if num_admissible_edges is provided,
-        otherwise falls back to an O(|Z|^2) calculation.
-        """
-        if num_admissible_edges is not None:
-            # --- FAST PATH (for A-only MCMC) ---
-            num_edges_present = len(A)
-            log_rho = math.log(self.rho)
-            log_one_minus_rho = math.log(1 - self.rho)
-            
-            logp = (num_edges_present * log_rho +
-                    (num_admissible_edges - num_edges_present) * log_one_minus_rho)
-            return logp
-        else:
-            # --- SLOW PATH (Fallback for Z-MCMC) ---
-            logp = 0.0
-            for P in Z_active:
-                for Q in Z_active:
-                    if admissible_edge(P, Q, unit_drop):
-                        a = 1 if A.get((P, Q), 0) == 1 else 0
-                        logp += math.log(self.rho) if a == 1 else math.log(1 - self.rho)
-            return logp
+    def log_prior_A(self, Z_active:Set[FrozenSet[str]], A:Dict[Tuple[FrozenSet[str],FrozenSet[str]],int], unit_drop=True)->float:
+        # ------------------------------------------------------------
+        # Computes log P(A | Z): the log prior over EDGE EXISTENCE between active potencies.
+        #
+        # Inputs:
+        #   - Z_active: set of active potencies (nodes in the potency DAG)
+        #   - A: adjacency dictionary mapping (P,Q) -> {0,1}, indicating whether edge P->Q is present
+        #   - unit_drop: if True, an admissible edge must drop EXACTLY one fate (|P\Q| == 1);
+        #                otherwise any monotone subset drop (Q ⊂ P) is admissible.
+        #
+        # Prior:
+        #   - For every admissible pair (P,Q):
+        #         A_{P->Q} ~ Bernoulli(rho)
+        #     So:
+        #         log P(A|Z) = ∑_{(P,Q) admissible} [ A_{P->Q} log(rho) + (1 - A_{P->Q}) log(1 - rho) ]
+        #
+        # Notes:
+        #   - "Admissible" enforces graph shape constraints (subset-monotone and possibly unit-drop).
+        #   - If an edge (P,Q) is not admissible, it does not contribute to the product/sum at all.
+        # ------------------------------------------------------------
+        labels=list(Z_active)
+        # admissible set is pairs with subset monotone (and optionally unit-drop)
+        logp=0.0
+        for P in labels:
+            for Q in labels:
+                if admissible_edge(P,Q,unit_drop):
+                    # a == 1 if the edge is present in A, else 0
+                    a = 1 if A.get((P,Q),0)==1 else 0
+                    # add Bernoulli log-prob for this edge
+                    logp += math.log(self.rho) if a==1 else math.log(1-self.rho)
+        return logp
 
 # ----------------------------
 # Structure container and proposals
@@ -1396,30 +1383,6 @@ class Structure:
         # Called by all propose_* methods after they mutate Z_active or A.
         self.labels_list=self._sorted_labels()
         self.Reach = transitive_closure(self.labels_list, self.A)
-
-    def update_reach_add_edge(self, u: FrozenSet[str], v: FrozenSet[str]):
-        """
-        Incrementally and efficiently updates the Reach dictionary AFTER 
-        an edge u -> v has been added to the graph A.
-        """
-        # 1. Find all nodes 'x' that can reach u (the "ancestors" of u).
-        ancestors_of_u = {x for x, reach_set in self.Reach.items() if u in reach_set}
-        
-        # 2. Find all nodes 'y' that v can reach (the "descendants" of v).
-        #    We use .get() for safety, though v should always be in Reach.
-        descendants_of_v = self.Reach.get(v, set())
-        
-        # 3. For each ancestor 'x', add all of v's descendants to its reachability set.
-        #    This creates all the new paths: (x -> ... -> u -> v -> ... -> y).
-        for x in ancestors_of_u:
-            self.Reach[x].update(descendants_of_v)
-
-    def update_reach_remove_edge(self, u: FrozenSet[str], v: FrozenSet[str]):
-        """
-        Handles the Reach update for edge removal. For safety and simplicity,
-        this falls back to a full re-computation.
-        """
-        self.recompute_reach()
 
     def clone(self)->"Structure":
         # Return a deep-enough copy to test/accept a proposal without mutating the current state.
@@ -1509,9 +1472,6 @@ class Structure:
         new.recompute_reach()
         return new
     
-# ==============================================================================
-# === NEW VITERBI DP FUNCTIONS (for Phase 2) ===================================
-# ==============================================================================
 
 def sparse_convolve_2d_viterbi(
     A: Dict[Tuple[int, int], Tuple[float, Any]], 
@@ -1549,8 +1509,7 @@ def sparse_convolve_2d_viterbi(
                 out[key] = (new_log_w, bp1 + bp2)
                 
     return out
-
-
+    
 def dp_tree_root_viterbi(
     root: TreeNode,
     active_labels: List[FrozenSet[str]],
@@ -1781,7 +1740,6 @@ def find_best_viterbi_labeling(
         
     return labeling
 
-
 def calculate_viterbi_flow(
     trees: List[TreeNode],
     F_full: Structure, # The fully-connected structure
@@ -1848,48 +1806,26 @@ def calculate_viterbi_flow(
 def score_structure(struct: Structure,
                     trees: List[TreeNode],
                     leaf_type_maps: List[Dict[str,str]],
-                    all_B_sets: List[Dict[TreeNode, Set[str]]], # <--- ACCEPT IT HERE
                     priors: Priors,
-                    num_admissible_edges: Optional[int] = None,  # <--- ADD NEW ARGUMENT
-                    precomputed_logp_Z: Optional[float] = None,  # <--- ADD NEW ARGUMENT
                     prune_eps: float = 0.0) -> Tuple[float, List[float]]:
     # Compute the (log) posterior score of a candidate structure F = (Z_active, A).
 
-
-    if precomputed_logp_Z is not None:
-        logp_Z = precomputed_logp_Z
-    else:
-        logp_Z = priors.log_prior_Z(struct.S, struct.Z_active)
-    
-    if not math.isfinite(logp_Z):
+    # ---- Prior over structure F ----
+    logp = priors.log_prior_Z(struct.S, struct.Z_active)
+    if not math.isfinite(logp):
         return float("-inf"), []
-        
-    logp_A = priors.log_prior_A(
-        struct.Z_active, struct.A,
-        unit_drop=struct.unit_drop,
-        num_admissible_edges=num_admissible_edges
-    )
-    
-    logp = logp_Z + logp_A
-    # # ---- Prior over structure F ----
-    # logp = priors.log_prior_Z(struct.S, struct.Z_active)
-    # if not math.isfinite(logp):
-    #     return float("-inf"), []
-    # # Add the edge prior, which is the key difference in this function
-    # logp += priors.log_prior_A(
-    #         struct.Z_active, struct.A,
-    #         unit_drop=struct.unit_drop,
-    #         num_admissible_edges=num_admissible_edges # <--- PASS IT ALONG
-    #     )
+    # Add the edge prior, which is the key difference in this function
+    logp += priors.log_prior_A(struct.Z_active, struct.A, unit_drop=struct.unit_drop)
+
     # ---- Likelihood over all trees ----
     logLs = []
-    for i, (root, leaf_to_type, B_sets) in enumerate(zip(trees, leaf_type_maps, all_B_sets)):
-        # B_sets = compute_B_sets(root, leaf_to_type)
-        # root_labels = B_sets.get(root, set())
+    for root, leaf_to_type in zip(trees, leaf_type_maps):
+        B_sets = compute_B_sets(root, leaf_to_type)
+        root_labels = B_sets.get(root, set())
 
-        # if not root_labels:
-        #     logLs.append(0.0)
-        #     continue
+        if not root_labels:
+            logLs.append(0.0)
+            continue
 
         # CORRECTED SECTION: Use the log-space DP and marginalization functions
         # 1. Call the DP function that returns a log-space table.
@@ -1913,37 +1849,32 @@ def score_structure(struct: Structure,
     total_log_post = sum(logLs)
     return total_log_post, logLs
 
-# --- MODIFY the score_structure function ---
-# (Keep the version relevant to your chosen MCMC: Z-only or Z+A)
-
 
 def score_structure_no_edge_prior(struct: Structure,
                     trees: List[TreeNode],
                     leaf_type_maps: List[Dict[str,str]],
-                    all_B_sets: List[Dict[TreeNode, Set[str]]], # <--- ACCEPT IT HERE
                     priors: Priors,
-                    precomputed_logp_Z: float, # <--- CHANGE: This is now a required argument
                     prune_eps: float = 0.0) -> Tuple[float, List[float]]:
     # print("\n" + "="*50)
     # print("=== STARTING SCORE_STRUCTURE ===")
     
-    logp = precomputed_logp_Z # Use the provided value directly
+    logp = priors.log_prior_Z(struct.S, struct.Z_active)
     # print(f"[DEBUG score_structure] Log Prior P(Z): {logp}")
     if not math.isfinite(logp):
         # print("[DEBUG score_structure] P(Z) is -inf. ABORTING.")
         return float("-inf"), []
 
     logLs = []
-    for i, (root, leaf_to_type, B_sets) in enumerate(zip(trees, leaf_type_maps, all_B_sets)):
+    for i, (root, leaf_to_type) in enumerate(zip(trees, leaf_type_maps)):
         # print(f"\n--- Processing Tree {i+1}/{len(trees)} ---")
-        # B_sets = compute_B_sets(root, leaf_to_type)
-        # root_labels = B_sets.get(root, set())
-        # # print(f"[DEBUG score_structure] Tree {i+1} has {len(root_labels)} unique types in its leaves.")
+        B_sets = compute_B_sets(root, leaf_to_type)
+        root_labels = B_sets.get(root, set())
+        # print(f"[DEBUG score_structure] Tree {i+1} has {len(root_labels)} unique types in its leaves.")
 
-        # if not root_labels:
-        #     # print(f"[DEBUG score_structure] Tree {i+1} has no mapped leaves. LogL = 0.0")
-        #     logLs.append(0.0)
-        #     continue
+        if not root_labels:
+            # print(f"[DEBUG score_structure] Tree {i+1} has no mapped leaves. LogL = 0.0")
+            logLs.append(0.0)
+            continue
         
         C_log = dp_tree_root_table(root, struct.labels_list, struct.Reach, B_sets, prune_eps=prune_eps)
         if not C_log:
@@ -1961,130 +1892,42 @@ def score_structure_no_edge_prior(struct: Structure,
     # print("="*50 + "\n")
     return sum(logLs), logLs
 
-# REPLACEMENT for score_structure_no_edge_prior (used in Z-only MCMC)
-def score_structure_no_edge_prior_collapsed(
+
+def get_log_likelihood(
     struct: Structure,
-    collapsed_data: pd.DataFrame, # <-- Takes the loaded DataFrame
-    priors: Priors,
-    precomputed_logp_Z: float,
+    trees: List[TreeNode],
+    leaf_type_maps: List[Dict[str,str]],
+    all_B_sets: List[Dict[TreeNode, Set[str]]],
     prune_eps: float = 0.0
-) -> Tuple[float, List[float]]:
-    """ Calculates log P(Z) + sum [ count * log P(Tree | Z) ] using collapsed data."""
+) -> float:
+    """
+    Calculates ONLY the log-likelihood part of the score: Sum[ log P(T|F) ].
+    This is the 'L' term needed for AIC/BIC.
+    """
+    total_logL = 0.0
+    for root, leaf_to_type, B_sets in zip(trees, leaf_type_maps, all_B_sets):
+        # B_sets = compute_B_sets(root, leaf_to_type) # Already precomputed
+        root_labels = B_sets.get(root, set())
+        
+        if not root_labels:
+            # This tree has no mapped leaves, logL = log(1) = 0
+            continue 
 
-    logp_prior = precomputed_logp_Z
-    if not math.isfinite(logp_prior):
-        return float("-inf"), []
+        C_log = dp_tree_root_table(root, struct.labels_list, struct.Reach, B_sets, prune_eps=prune_eps)
 
-    total_log_likelihood = 0.0
-    per_potency_weighted_logL = [] # Optional: Store weighted logL
-
-    # Use the appropriate Reach object for Z-only MCMC
-    reach_object = SubsetReach()
-
-    for idx, row in collapsed_data.iterrows():
-        cell_types_present = {col for col in collapsed_data.columns[:-1] if row[col] == 1}
-        potency_set = frozenset(cell_types_present)
-        count = row['counts']
-
-        if count <= 0 or not potency_set: continue
-
-        potency_id = str(idx)
-        virtual_root, virtual_leaf_map = create_virtual_star_tree(potency_set, potency_id)
-        B_sets_single = compute_B_sets(virtual_root, virtual_leaf_map)
-
-        C_log = dp_tree_root_table(
-            virtual_root,
-            struct.labels_list,
-            reach_object, # Use SubsetReach here
-            B_sets_single,
-            prune_eps=prune_eps
-        )
-
-        if not C_log: return float("-inf"), []
+        if not C_log:
+            # If the DP table is empty, this structure is impossible for this tree.
+            return -math.inf 
 
         tree_logL = tree_marginal_from_root_table_log(C_log)
-        if not math.isfinite(tree_logL): return float("-inf"), []
-
-        weighted_logL = tree_logL * count
-        total_log_likelihood += weighted_logL
-        per_potency_weighted_logL.append(weighted_logL)
-
-    final_score = logp_prior + total_log_likelihood
-    return final_score, per_potency_weighted_logL
-
-
-# REPLACEMENT for score_structure (used in Z+A MCMC or final scoring)
-def score_structure_collapsed(
-    struct: Structure,
-    collapsed_data: pd.DataFrame, # <-- Takes the loaded DataFrame
-    priors: Priors,
-    num_admissible_edges: Optional[int] = None,
-    precomputed_logp_Z: Optional[float] = None,
-    prune_eps: float = 0.0
-) -> Tuple[float, List[float]]:
-    """ Calculates log P(Z) + log P(A|Z) + sum [ count * log P(Tree | Z, A) ] """
-
-    # Calculate log P(Z)
-    if precomputed_logp_Z is not None:
-        logp_Z = precomputed_logp_Z
-    else:
-        logp_Z = priors.log_prior_Z(struct.S, struct.Z_active)
-
-    if not math.isfinite(logp_Z):
-        return float("-inf"), []
-
-    # Calculate log P(A|Z)
-    print(f"Len of struct.A is = {len(struct.A)}")
-    logp_A = priors.log_prior_A(
-        struct.Z_active, struct.A,
-        unit_drop=struct.unit_drop,
-        num_admissible_edges=num_admissible_edges
-    )
-    if not math.isfinite(logp_A): # Should generally be finite unless rho is 0 or 1
-        return float("-inf"), []
-
-    logp = logp_Z + logp_A
-    print(f"Log_p = {logp}")
-    # total_log_likelihood = 0.0
-    # per_potency_weighted_logL = [] # Optional
-    logLs = []
-
-
-    # Use the REAL Reach object calculated by the Structure class
-    reach_object = struct.Reach
-
-    for idx, row in collapsed_data.iterrows():
-        cell_types_present = {col for col in collapsed_data.columns[:-1] if row[col] == 1}
-        potency_set = frozenset(cell_types_present)
-        count = row['counts']
-
-        if count <= 0 or not potency_set: continue
-
-        potency_id = str(idx)
-        virtual_root, virtual_leaf_map = create_virtual_star_tree(potency_set, potency_id)
-        B_sets_single = compute_B_sets(virtual_root, virtual_leaf_map)
-
-        C_log = dp_tree_root_table(
-            virtual_root,
-            struct.labels_list,
-            reach_object, # Use the real Reach object here
-            B_sets_single,
-            prune_eps=prune_eps
-        )
-
-        if not C_log: return float("-inf"), []
-
-        tree_logL = tree_marginal_from_root_table_log(C_log)
-        if not math.isfinite(tree_logL): return float("-inf"), []
-
-        weighted_logL = (tree_logL + logp)* count
-        # total_log_likelihood += weighted_logL
-        # per_potency_weighted_logL.append(weighted_logL)
-        logLs.append(weighted_logL)
-
-    # final_score = logp_prior + total_log_likelihood
-    total_log_post = sum(logLs)
-    return total_log_post, logLs
+        
+        if not math.isfinite(tree_logL):
+            # If the final log-likelihood is not a valid number, abort.
+            return -math.inf 
+        
+        total_logL += tree_logL
+    
+    return total_logL
 
 
 # deterministically build ALL admissible edges for a given Z (keeps MCMC symmetric/easy)
@@ -2097,97 +1940,6 @@ def _full_edges_for_Z(Z_active: Set[FrozenSet[str]], unit_drop_edges: bool) -> D
                 A[(P, Q)] = 1
     return A
 
-# Place this function BEFORE mcmc_map_search in your script
-def propose_swap_Z_and_update_A_incrementally(
-    current_struct: "Structure",
-    rng: random.Random,
-    candidate_pool: List[FrozenSet[str]],
-    block_swap_sizes: Tuple[int, ...],
-    fitch_probs: Dict[FrozenSet[str], float]
-) -> Tuple[Optional["Structure"], Optional[Dict]]:
-    """
-    Proposes swapping 'm' potencies and incrementally updates the edge set 'A'.
-    This version is fixed to handle duplicate selections from random.choices.
-    """
-    root = frozenset(current_struct.S)
-    acti = [P for P in current_struct.Z_active if len(P) >= 2 and P != root]
-    ina = [P for P in candidate_pool if P not in current_struct.Z_active]
-
-    if not acti or not ina:
-        return None, None
-
-    # m = rng.choice(block_swap_sizes)
-    # m = max(1, min(m, len(acti), len(ina)))
-    m = 1
-    
-    # --- Weighted sampling (this part is fine) ---
-    add_weights = [fitch_probs.get(p, 0.001) for p in ina]
-    drop_weights = [1.0 - fitch_probs.get(p, 0.999) for p in acti]
-    
-    add = random.choices(ina, weights=add_weights, k=m)
-    drop = random.choices(acti, weights=drop_weights, k=m)
-
-    new_struct = current_struct.clone()
-
-    #
-    # V V V THIS IS THE FIX V V V
-    #
-    # By converting `drop` to a `set`, we automatically remove any duplicates
-    # before we start iterating, preventing the KeyError.
-    for P_rm in set(drop):
-        new_struct.Z_active.remove(P_rm)
-    
-    # Similarly, ensure `add` potencies are unique to avoid issues
-    for P_add in set(add):
-        new_struct.Z_active.add(P_add)
-    
-    # Prune edges related to ANY of the dropped potencies
-    drop_set = set(drop)
-    new_struct.A = {edge: 1 for edge in new_struct.A if not (edge[0] in drop_set or edge[1] in drop_set)}
-    
-    # Wire up the newly added (and unique) potencies
-    for P_add in set(add):
-        for P_other in new_struct.Z_active:
-            if P_add == P_other: continue
-            if admissible_edge(P_add, P_other, new_struct.unit_drop):
-                new_struct.A[(P_add, P_other)] = 1
-            if admissible_edge(P_other, P_add, new_struct.unit_drop):
-                new_struct.A[(P_other, P_add)] = 1
-
-    # new_struct.recompute_reach()
-    
-    # The details can still show the original samples if you wish
-    details = {'drop': drop, 'add': add}
-    return new_struct, details
-
-
-# ==============================================================================
-# === ADD THIS NEW HELPER FUNCTION =============================================
-# ==============================================================================
-
-def _print_full_state(struct: Structure, score: float, title: str):
-    """A helper function to pretty-print the current MCMC state."""
-    print(f"\n{title}")
-    print(f"Score: {score:.4f}")
-    
-    # Get all potencies, separating singletons
-    S = {frozenset([t]) for t in struct.S}
-    multi_sorted = sorted(
-        [P for P in struct.Z_active if P not in S],
-        key=lambda x: (len(x), tuple(sorted(list(x))))
-    )
-    print(f"Active Potencies (k={len(multi_sorted)}):")
-    for P in multi_sorted: 
-        print(f"  {pot_str(P)}")
-
-    print(f"Active Edges ({len(struct.A)}):")
-    edges = sorted(
-        [e for e, v in struct.A.items() if v == 1],
-        key=lambda e: (len(e[0]), tuple(sorted(list(e[0]))), pot_str(e[1]))
-    )
-    for P, Q in edges: 
-        print(f"  {pot_str(P)} -> {pot_str(Q)}")
-    print("-" * 60)
 
 # ====== MCMC over Z (potency sets). A is deterministic (all admissible edges). ======
 # Initial mcmc map search (no fitch, pure random)
@@ -2195,7 +1947,6 @@ def mcmc_map_search(
     S: List[str],
     trees: List["TreeNode"],
     leaf_type_maps: List[Dict[str,str]],
-    all_B_sets: List[Dict[TreeNode, Set[str]]], # <--- ADD HERE
     priors: "Priors",
     *,
     unit_drop_edges: bool = True,
@@ -2215,13 +1966,6 @@ def mcmc_map_search(
     Proposals are symmetric -> accept with min(1, exp(delta)).
     """
 
-    def make_struct_no_reach(Zset: Set[FrozenSet[str]]) -> "Structure":
-        A = _full_edges_for_Z(Zset, unit_drop_edges)
-        struct = Structure(S, Zset, A, unit_drop=unit_drop_edges)
-        # OVERWRITE the expensive transitive closure with our dummy object
-        struct.Reach = SubsetReach()
-        return struct
-
     rng = random.Random(seed)
 
     # ----- This section is unchanged -----
@@ -2230,6 +1974,10 @@ def mcmc_map_search(
         if not candidate_pool:
             candidate_pool = [P for P in all_nonempty_subsets(S) if len(P) >= 2]
     pool_set = set(candidate_pool)
+
+    def make_struct(Zset: Set[FrozenSet[str]]) -> "Structure":
+        A = _full_edges_for_Z(Zset, unit_drop_edges)
+        return Structure(S, Zset, A, unit_drop=unit_drop_edges)
 
     # ----- Initialization logic is unchanged -----
     singles = {frozenset([t]) for t in S}
@@ -2252,9 +2000,8 @@ def mcmc_map_search(
         if sprinkle:
             Z0.update(rng.sample(candidate_pool, sprinkle))
     
-    current = make_struct_no_reach(Z0)
-    current_logp_Z = priors.log_prior_Z(S, current.Z_active)
-    curr_score, _ = score_structure_no_edge_prior(current, trees, leaf_type_maps,all_B_sets, priors, precomputed_logp_Z=current_logp_Z)
+    current = make_struct(Z0)
+    curr_score, _ = score_structure_no_edge_prior(current, trees, leaf_type_maps, priors)
     if not math.isfinite(curr_score):
         # for _ in range(20):
         #     # Fallback logic is unchanged
@@ -2362,12 +2109,9 @@ def mcmc_map_search(
     # ----- MCMC loop -----
     kept_Z = []
     kept_scores = []
+    all_scores_trace = [] # <--- **ADDED**: List to store score at EVERY iteration
     best_struct = current.clone()
     best_score = curr_score
-
-
-    all_scores_trace = [] # <--- **ADDED**: List to store score at EVERY iteration
-
     accepts = 0
     tried = 0
     
@@ -2387,48 +2131,25 @@ def mcmc_map_search(
 
         if priors.potency_mode == "fixed_k" and fixed_k is not None:
             # <<<--- CHANGE 3: Unpack the details from the proposal call --->>>
-            # Zprop, proposal_details = propose_fixed_k_swap(current.Z_active)
+            Zprop, proposal_details = propose_fixed_k_swap(current.Z_active)
             # Zprop, proposal_details = propose_jaccard_swap(current.Z_active)
 
             # if proposal_details:
             #     dropped_str = ", ".join(pot_str(p) for p in proposal_details['drop'])
             #     added_str = ", ".join(pot_str(p) for p in proposal_details['add'])
             #     print(f"\n[Proposing Swap]: {dropped_str} -> {added_str}")
-            prop_struct, proposal_details = propose_swap_Z_and_update_A_incrementally(
-                current_struct=current,
-                rng=rng,
-                candidate_pool=candidate_pool,
-                block_swap_sizes=block_swap_sizes,
-                fitch_probs=fitch_probs
-            )
-            proposed_logp_Z = current_logp_Z 
-
-            if prop_struct:
-                # Overwrite the Reach object on the new proposal
-                prop_struct.Reach = SubsetReach()
         else:
             Zprop = propose_toggle(current.Z_active)
 
-        # if Zprop is None:
-        #     tried += 1
-        #     if progress:
-        #         iterator.set_postfix({"logpost": f"{curr_score:.3f}", "acc": f"{(accepts/max(1,tried)):.2f}"})
-        #     continue
-
-        if prop_struct is None:
+        if Zprop is None:
             tried += 1
             if progress:
-                iterator.set_postfix({
-                    "logpost": f"{curr_score:.3f}",
-                    "acc": f"{(accepts/max(1,tried)):.2f}"
-                })
+                iterator.set_postfix({"logpost": f"{curr_score:.3f}", "acc": f"{(accepts/max(1,tried)):.2f}"})
             continue
 
-        # prop_struct = make_struct(Zprop)
-        # prop_score, _ = score_structure_no_edge_prior(prop_struct, trees, leaf_type_maps, all_B_sets, priors)
+        prop_struct = make_struct(Zprop)
+        prop_score, _ = score_structure_no_edge_prior(prop_struct, trees, leaf_type_maps, priors)
         
-        prop_score, _ = score_structure_no_edge_prior(prop_struct, trees, leaf_type_maps, all_B_sets, priors, proposed_logp_Z)
-
         accept = False
         if math.isfinite(prop_score):
             delta = prop_score - curr_score
@@ -2447,12 +2168,10 @@ def mcmc_map_search(
 
             current = prop_struct
             curr_score = prop_score
-            current_logp_Z = proposed_logp_Z # IMPORTANT: Update the prior score
-            
             if curr_score > best_score:
                 best_struct = current.clone()
                 best_score = curr_score
-
+        
         all_scores_trace.append(curr_score)
 
         if it >= burn_in and ((it - burn_in) % thin == 0):
@@ -2482,6 +2201,116 @@ def mcmc_map_search(
         "accept_rate": (accepts / max(1, tried)),
         "inclusion": inclusion,
     }
+
+    return best_struct, best_score, stats
+
+def mcmc_edges_only_search(
+    S: List[str],
+    trees: List["TreeNode"],
+    leaf_type_maps: List[Dict[str, str]],
+    priors: "Priors",
+    Z_fixed: Set[FrozenSet[str]],      # <<< CHANGE: Takes Z_fixed as input now
+    *,
+    unit_drop_edges: bool = True,      # <<< ADDED: Needed to create the Structure
+    steps: int = 2000,
+    burn_in: int = 500,
+    thin: int = 10,
+    seed: int = 123,
+    progress: bool = True,
+    # position: int = 0
+) -> Tuple["Structure", float, Dict]:
+    """
+    MCMC sampler that explores ONLY the edge space (A) for a FIXED set of
+    potencies (Z). It always starts by building a new mid-sized DAG for A.
+    """
+    rng = random.Random(seed)
+
+    # <<< CHANGE: Always build a fresh mid-sized DAG for the starting A
+    initial_A = build_mid_sized_connected_dag(Z_fixed, keep_prob=0.35, rng=rng)
+    current = Structure(S, Z_fixed, initial_A, unit_drop=unit_drop_edges)
+
+    # Initial scoring
+    curr_score, _ = score_structure(current, trees, leaf_type_maps, priors)
+    if not math.isfinite(curr_score):
+        raise RuntimeError("Could not find a finite-scoring starting point for edge search.")
+
+    best_struct = current.clone()
+    best_score = curr_score
+
+    # ---------- symmetric proposal kernels ----------
+    def admissible_pairs(Zset: Set[FrozenSet[str]]) -> List[Tuple[FrozenSet[str],FrozenSet[str]]]:
+        L = list(Zset)
+        out = []
+        for P in L:
+            for Q in L:
+                if admissible_edge(P, Q, unit_drop_edges):
+                    out.append((P, Q))
+        return out
+
+    def prop_edge_toggle(st: "Structure", rng: random.Random) -> Tuple[Optional["Structure"], Optional[Dict]]:
+        """
+        Proposes flipping a single admissible edge on or off.
+        Returns the new structure and a dictionary detailing the change.
+        """
+        pairs = admissible_pairs(st.Z_active)
+        if not pairs:
+            return None, None
+        
+        e = rng.choice(pairs)
+        new = st.clone()
+        
+        # Create a dictionary to hold the details of this move
+        details = {'edge': e}
+        
+        # Check if the edge exists in the *current* structure to determine the action
+        if st.A.get(e, 0) == 1:
+            del new.A[e]
+            details['action'] = 'removed'
+        else:
+            new.A[e] = 1
+            details['action'] = 'added'
+            
+        new.recompute_reach()
+        return new, details
+    
+    # ... the rest of the MCMC loop remains exactly the same ...
+
+    accepts = 0
+    tried = 0
+    iterator = range(steps)
+    if progress:
+        iterator = trange(steps, desc=f"Chain (Edges)", leave=True)
+    def pot_str(P): return "{" + ",".join(sorted(list(P))) + "}"
+
+    for it in iterator:
+        prop, details = prop_edge_toggle(current, rng)
+        if prop is None:
+            tried += 1
+            continue
+        prop_score, _ = score_structure(prop, trees, leaf_type_maps, priors)
+        accept = False
+        if math.isfinite(prop_score):
+            delta = prop_score - curr_score
+            accept = (delta >= 0) or (rng.random() < math.exp(delta))
+        tried += 1
+        if accept:
+            accepts += 1
+            if details:
+                edge_str = f"{pot_str(details['edge'][0])} -> {pot_str(details['edge'][1])}"
+                action_str = details['action'].capitalize()
+                # print(f"[Accepted Edge]: {action_str} {edge_str} | New Score: {prop_score:.3f}")
+            current = prop
+            curr_score = prop_score
+            if curr_score > best_score:
+                best_struct = current.clone()
+                best_score = curr_score
+        if progress:
+             iterator.set_postfix({
+                 "logpost": f"{curr_score:.3f}", "best": f"{best_score:.3f}",
+                 "acc": f"{(accepts/max(1,tried)):.2f}", "E": f"{sum(current.A.values())}"
+             })
+
+    stats = {"accept_rate": accepts / max(1, tried)}
     return best_struct, best_score, stats
 
 # ====== MCMC with edges kept in the target (log P(Z) + log P(A|Z) + Σ log P(T|Z,A)) ======
@@ -2804,7 +2633,6 @@ def mcmc_map_search_only_A(
     S: List[str],
     trees: List["TreeNode"],
     leaf_type_maps: List[Dict[str, str]],
-    all_B_sets: List[Dict[TreeNode, Set[str]]], # <--- ADD HERE
     priors: "Priors",
     *,
     unit_drop_edges: bool = True,
@@ -2837,17 +2665,6 @@ def mcmc_map_search_only_A(
     """
     rng = random.Random(seed)
 
-    all_admissible_pairs = [
-        (P, Q)
-        for P in Z
-        for Q in Z
-        if admissible_edge(P, Q, unit_drop_edges)
-    ]
-
-    num_admissible_edges = len(all_admissible_pairs) # Get the total count once
-
-    logp_Z_fixed = priors.log_prior_Z(S, Z)
-
     # ---------- candidate pool for multis ----------
     if candidate_pool is None:
         candidate_pool = collect_fitch_multis(S, trees, leaf_type_maps)
@@ -2860,19 +2677,19 @@ def mcmc_map_search_only_A(
 
     def seed_A(Z: Set[FrozenSet[str]]) -> Dict[Tuple[FrozenSet[str],FrozenSet[str]], int]:
         # any reasonable initial A works; we reuse your helper
-        return build_mid_sized_connected_dag(Z, keep_prob=0.3, rng=rng)
+        return build_mid_sized_connected_dag(Z, keep_prob=0.35, rng=rng)
 
     # Z = seed_Z()
     A = seed_A(Z)
     current = Structure(S, Z, A, unit_drop=unit_drop_edges)
-    curr_score, _ = score_structure(current, trees, leaf_type_maps, all_B_sets, priors, num_admissible_edges=num_admissible_edges,precomputed_logp_Z=logp_Z_fixed)
+    curr_score, _ = score_structure(current, trees, leaf_type_maps, priors)
     if not math.isfinite(curr_score):
         # rescue a few times
         for _ in range(20):
             # Z = seed_Z(); 
             A = seed_A(Z)
             current = Structure(S, Z, A, unit_drop=unit_drop_edges)
-            curr_score, _ = score_structure(current, trees, leaf_type_maps, priors, num_admissible_edges=num_admissible_edges,precomputed_logp_Z=logp_Z_fixed)
+            curr_score, _ = score_structure(current, trees, leaf_type_maps, priors)
             if math.isfinite(curr_score):
                 break
         if not math.isfinite(curr_score):
@@ -2880,11 +2697,6 @@ def mcmc_map_search_only_A(
 
     best_struct = current.clone()
     best_score = curr_score
-
-
-    if not all_admissible_pairs:
-        print("[Warning] No admissible edges found for the given Z_fixed set. MCMC will not move.")
-
 
     # ---------- symmetric proposal kernels ----------
     def admissible_pairs(Zset: Set[FrozenSet[str]]) -> List[Tuple[FrozenSet[str],FrozenSet[str]]]:
@@ -2895,14 +2707,122 @@ def mcmc_map_search_only_A(
                 if admissible_edge(P, Q, unit_drop_edges):
                     out.append((P, Q))
         return out
+    
+    def prop_edge_toggle(st: "Structure", rng: random.Random) -> Tuple[Optional["Structure"], Optional[Dict]]:
+        """
+        Proposes flipping a single admissible edge on or off.
+        Returns the new structure and a dictionary detailing the change.
+        """
+        pairs = admissible_pairs(st.Z_active)
+        if not pairs:
+            return None, None
+        
+        e = rng.choice(pairs)
+        new = st.clone()
+        
+        # Create a dictionary to hold the details of this move
+        details = {'edge': e}
+        
+        # Check if the edge exists in the *current* structure to determine the action
+        if st.A.get(e, 0) == 1:
+            del new.A[e]
+            details['action'] = 'removed'
+        else:
+            new.A[e] = 1
+            details['action'] = 'added'
+            
+        new.recompute_reach()
+        return new, details
 
+    def prop_potency_fixed_k(st: "Structure",
+                         rng: random.Random,
+                         candidate_pool: List[FrozenSet[str]],
+                         block_swap_sizes: Tuple[int, ...]) -> Tuple[Optional["Structure"], Optional[Dict]]:
+        """
+        Proposes a new structure by swapping 'm' potencies.
+        It prunes old edges, then intelligently rewires the new potencies by:
+        1. Adding a random subset (35%) of all possible new edges.
+        2. Forcibly adding edges if needed to ensure the new potency is connected
+            to the main graph (a path exists from the root, through the new
+            potency, to a leaf).
+
+        Returns:
+            A tuple of (new_structure, details_of_the_swap).
+        """
+        act = [P for P in st.Z_active if len(P) >= 2]
+        ina = [P for P in candidate_pool if P not in st.Z_active]
+        if not act or not ina:
+            return None, None
+
+        m = rng.choice(block_swap_sizes)
+        m = max(1, min(m, len(act), len(ina)))
+        drop = rng.sample(act, m)
+        add = rng.sample(ina, m)
+
+        new = st.clone()
+
+        # 1. Remove potencies and prune their incident edges
+        for P in drop:
+            new.Z_active.remove(P)
+        if new.A:
+            new.A = {e: v for e, v in new.A.items() if (e[0] not in drop and e[1] not in drop)}
+
+        # 2. Add the new potencies
+        for P in add:
+            new.Z_active.add(P)
+
+        # 3. Rewire the newly added potencies
+        for P_new in add:
+            # Find all potential parents and children for the new potency
+            admissible_parents = [p for p in new.Z_active if admissible_edge(p, P_new, new.unit_drop)]
+            admissible_children = [c for c in new.Z_active if admissible_edge(P_new, c, new.unit_drop)]
+
+            # 3a. Add a random subset of possible edges
+            for parent in admissible_parents:
+                if rng.random() < 0.35:
+                    new.A[(parent, P_new)] = 1
+            for child in admissible_children:
+                if rng.random() < 0.35:
+                    new.A[(P_new, child)] = 1
+
+            # 3b. Enforce connectivity if the random wiring missed it
+            has_incoming_edge = any(e[1] == P_new for e in new.A)
+            if not has_incoming_edge and admissible_parents:
+                # Forcibly connect it from a random parent to ensure a path from the root
+                chosen_parent = rng.choice(admissible_parents)
+                new.A[(chosen_parent, P_new)] = 1
+
+            has_outgoing_edge = any(e[0] == P_new for e in new.A)
+            if not has_outgoing_edge and admissible_children:
+                # Forcibly connect it to a random child to ensure a path to a leaf
+                chosen_child = rng.choice(admissible_children)
+                new.A[(P_new, chosen_child)] = 1
+
+        new.recompute_reach()
+    
+        # Return both the new structure and the details of the swap for logging
+        swap_details = {'drop': drop, 'add': add}
+        return new, swap_details
+
+    def prop_potency_toggle(st: "Structure") -> Optional["Structure"]:
+        # toggle a random candidate multi (root/singletons are never toggled)
+        P = rng.choice(candidate_pool)
+        new = st.clone()
+        if P in new.Z_active:
+            new.Z_active.remove(P)
+            # prune incident edges
+            if new.A:
+                new.A = {e: v for e, v in new.A.items() if (P not in e)}
+        else:
+            new.Z_active.add(P)
+            # no auto-wiring (edges will be explored separately)
+        new.recompute_reach()
+        return new
 
     # ---------- MCMC main loop ----------
     kept_Z = []
     kept_scores = []
     kept_edge_density = []
-
-    all_scores_trace = [] # <--- **ADDED**: List to store score at EVERY iteration
 
     accepts = 0
     tried = 0
@@ -2911,58 +2831,26 @@ def mcmc_map_search_only_A(
     if progress:
         iterator = trange(steps, desc="MCMC (A-only)", leave=True)
 
-    all_scores_trace.append(curr_score)
-
     for it in iterator:
-
-
-        if not all_admissible_pairs:
-            # If there are no possible edges, we can't do anything.
-            break
-
-        # 1. Propose a change by picking a random edge to flip
-        edge_to_flip = rng.choice(all_admissible_pairs)
-        u, v = edge_to_flip
+        prop = None
+        last_proposal_details = None
         
-        action = 'added' if current.A.get(edge_to_flip, 0) == 0 else 'removed'
-        last_proposal_details = {'edge': edge_to_flip, 'action': action}
-        
-        prop = current.clone()
-        
-        # Apply the toggle based on the action
-        if action == 'added':
-            # Use the fast, incremental update for additions.
-            prop.A[edge_to_flip] = 1  # <-- YOU WERE MISSING THIS
-            prop.update_reach_add_edge(u, v)
-        else: # action == 'removed'
-            # Use the safe, full re-computation for removals.
-            del prop.A[edge_to_flip]  # <-- YOU WERE MISSING THIS
-            prop.update_reach_remove_edge(u, v)
-        
-        # prop.recompute_reach()
+        prop, last_proposal_details = prop_edge_toggle(current, rng)
+        # prop = prop_edge_toggle(current)
 
-        # 2. Score the new structure using the parallel scorer
-        prop_score, _ = score_structure(prop, trees, leaf_type_maps, all_B_sets, priors, num_admissible_edges=num_admissible_edges, precomputed_logp_Z=logp_Z_fixed)
-        
-        # prop = None
-        # last_proposal_details = None
-        
-        # prop, last_proposal_details = prop_edge_toggle(current, rng)
-        # # prop = prop_edge_toggle(current)
+        if prop is None:
+            # count as tried but no change
+            tried += 1
+            if progress:
+                iterator.set_postfix({
+                    "logpost": f"{curr_score:.3f}",
+                    "best": f"{best_score:.3f}",
+                    "acc": f"{(accepts/max(1,tried)):.2f}",
+                    "E": f"{sum(prop.A.values()) if prop else sum(current.A.values())}"
+                })
+            continue
 
-        # if prop is None:
-        #     # count as tried but no change
-        #     tried += 1
-        #     if progress:
-        #         iterator.set_postfix({
-        #             "logpost": f"{curr_score:.3f}",
-        #             "best": f"{best_score:.3f}",
-        #             "acc": f"{(accepts/max(1,tried)):.2f}",
-        #             "E": f"{sum(prop.A.values()) if prop else sum(current.A.values())}"
-        #         })
-        #     continue
-
-        # prop_score, _ = score_structure(prop, trees, leaf_type_maps, all_B_sets, priors)
+        prop_score, _ = score_structure(prop, trees, leaf_type_maps, priors)
 
         accept = False
         if math.isfinite(prop_score):
@@ -2973,19 +2861,17 @@ def mcmc_map_search_only_A(
         if accept:
             accepts += 1
 
-            # if last_proposal_details and 'edge' in last_proposal_details:
-            #     edge_details = last_proposal_details
-            #     edge_str = f"{pot_str(edge_details['edge'][0])} -> {pot_str(edge_details['edge'][1])}"
-            #     action_str = edge_details['action'].capitalize()
-            #     print(f"[Accepted Edge]: {action_str} {edge_str} | New Score: {prop_score:.3f}")
+            if last_proposal_details and 'edge' in last_proposal_details:
+                edge_details = last_proposal_details
+                edge_str = f"{pot_str(edge_details['edge'][0])} -> {pot_str(edge_details['edge'][1])}"
+                action_str = edge_details['action'].capitalize()
+                # print(f"[Accepted Edge]: {action_str} {edge_str} | New Score: {prop_score:.3f}")
 
             current = prop
             curr_score = prop_score
             if curr_score > best_score:
                 best_struct = current.clone()
                 best_score = curr_score
-
-        all_scores_trace.append(curr_score)
 
         # collect sample
         if it >= burn_in and ((it - burn_in) % thin == 0):
@@ -3013,646 +2899,11 @@ def mcmc_map_search_only_A(
     stats = {
         "samples_Z": kept_Z,
         "scores": kept_scores,
-        "all_scores_trace": all_scores_trace, # <--- **ADDED**: The full trace
         "edge_density": kept_edge_density,
         "accept_rate": accepts / max(1, tried),
         "inclusion": inclusion,
     }
-    # print(f"Accepts = {accepts}")
     return best_struct, best_score, stats
-
-
-# ==============================================================================
-# === 1. NEW LIKELIHOOD-ONLY SCORING FUNCTION ==================================
-# ==============================================================================
-
-def get_log_likelihood(
-    struct: Structure,
-    trees: List[TreeNode],
-    leaf_type_maps: List[Dict[str,str]],
-    all_B_sets: List[Dict[TreeNode, Set[str]]],
-    prune_eps: float = 0.0
-) -> float:
-    """
-    Calculates *only* the total log-likelihood term: Sum_i log P(T_i | F).
-    It does NOT include any priors P(Z) or P(A|Z).
-    """
-    total_log_L = 0.0
-    
-    # We use the struct's pre-computed Reach and labels_list
-    active_labels = struct.labels_list
-    Reach = struct.Reach
-    
-    for i, (root, leaf_to_type, B_sets) in enumerate(zip(trees, leaf_type_maps, all_B_sets)):
-        
-        # 1. Call the DP function that returns a log-space table.
-        C_log = dp_tree_root_table(
-            root, 
-            active_labels, 
-            Reach, 
-            B_sets, 
-            prune_eps=prune_eps
-        )
-
-        if not C_log:
-            # This structure is impossible for this tree.
-            return -math.inf
-
-        # 2. Call the marginalization function that works entirely in log-space.
-        tree_logL = tree_marginal_from_root_table_log(C_log)
-
-        if not math.isfinite(tree_logL):
-            # If the final log-likelihood is not a valid number, abort.
-            return -math.inf
-
-        # 3. Accumulate the total log-likelihood
-        total_log_L += tree_logL
-        
-    return total_log_L
-
-# ==============================================================================
-# === 2. HELPERS FOR "CLEVER" PROPOSALS ========================================
-# ==============================================================================
-
-def _propose_clever_A(
-    current_struct: Structure, 
-    fitch_probs: Dict[FrozenSet[str], float],
-    rng: random.Random
-) -> Tuple[Optional[Dict[Tuple[FrozenSet[str], FrozenSet[str]], int]], float, float]:
-    """
-    Proposes flipping ONE edge, biased by Fitch probabilities.
-    This is an ASYMMETRIC proposal and requires a Hastings correction.
-    
-    Returns:
-        (A_prop, log_q_forward, log_q_reverse)
-    """
-    all_admissible_edges = current_struct.all_edge_pairs()
-    if not all_admissible_edges:
-        return None, 0.0, 0.0, None, None
-
-    current_A = current_struct.A
-    
-    # --- 1. Calculate weights for ALL admissible edges ---
-    weights_fwd = []
-    log_weights_fwd = []
-    
-    # Get a baseline probability for edges not in fitch_probs (e.g., singletons)
-    # Use a small non-zero value
-    min_prob = 1e-6 
-
-    for edge in all_admissible_edges:
-        P, Q = edge
-        # Get Fitch prob for the *parent* node, default to min_prob
-        p_fitch = fitch_probs.get(P, min_prob)
-        
-        if current_A.get(edge, 0) == 1:
-            # Edge is ACTIVE. Proposal weight is to DROP it.
-            # We want to drop edges with LOW support.
-            weight = max(min_prob, 1.0 - p_fitch)
-        else:
-            # Edge is INACTIVE. Proposal weight is to ADD it.
-            # We want to add edges with HIGH support.
-            weight = max(min_prob, p_fitch)
-        
-        weights_fwd.append(weight)
-        log_weights_fwd.append(math.log(weight))
-
-    Z_fwd = sum(weights_fwd)
-    if Z_fwd == 0: # Should not happen with min_prob
-        return None, 0.0, 0.0, None, None
-        
-    log_Z_fwd = math.log(Z_fwd)
-
-    # --- 2. Propose the edge to flip ---
-    chosen_idx = rng.choices(range(len(all_admissible_edges)), weights=weights_fwd, k=1)[0]
-    edge_to_flip = all_admissible_edges[chosen_idx]
-    
-    A_prop = dict(current_A)
-    action: str
-    if current_A.get(edge_to_flip, 0) == 1:
-        del A_prop[edge_to_flip]
-        action = 'removed'
-    else:
-        A_prop[edge_to_flip] = 1
-        action = 'added'
-
-    # --- 3. Calculate log_q_forward ---
-    log_q_fwd = log_weights_fwd[chosen_idx] - log_Z_fwd
-
-    # --- 4. Calculate log_q_reverse ---
-    # We are now in state A_prop. What's the prob of flipping `edge_to_flip` back?
-    
-    # Get the *reverse* weight for the chosen edge
-    P_flip, Q_flip = edge_to_flip
-    p_fitch_flip = fitch_probs.get(P_flip, min_prob)
-    
-    weight_rev_edge: float
-    if action == 'added':
-        # Reverse move is to REMOVE it. Weight is (1 - p_fitch)
-        weight_rev_edge = max(min_prob, 1.0 - p_fitch_flip)
-    else:
-        # Reverse move is to ADD it. Weight is p_fitch
-        weight_rev_edge = max(min_prob, p_fitch_flip)
-
-    # The *new* normalization constant Z_rev
-    Z_rev = Z_fwd - weights_fwd[chosen_idx] + weight_rev_edge
-    log_Z_rev = math.log(Z_rev)
-    
-    log_q_rev = math.log(weight_rev_edge) - log_Z_rev
-
-    return A_prop, log_q_fwd, log_q_rev, edge_to_flip, action
-
-
-def _propose_clever_Z(
-    current_struct: Structure,
-    rho: float, # priors.rho
-    rng: random.Random,
-    candidate_pool: List[FrozenSet[str]]
-) -> Tuple[Optional[Set[FrozenSet[str]]], Optional[Dict[Tuple[FrozenSet[str], FrozenSet[str]], int]], float, float]:
-    """
-    Proposes a (Z', A') jointly.
-    1. Symmetrically swaps one potency Z -> Z'.
-    2. Stochastically re-wires edges for the new potency to get A'.
-    
-    This is an ASYMMETRIC proposal.
-    
-    Returns:
-        (Z_prop, A_prop, log_q_forward_rewire, log_q_reverse_rewire, P_d, P_a)
-    """
-    S = current_struct.S
-    Z = current_struct.Z_active
-    A = current_struct.A
-    unit_drop = current_struct.unit_drop
-    root = frozenset(S)
-    
-    # --- 1. Symmetric Z-Swap Proposal ---
-    acti = [P for P in Z if len(P) >= 2 and P != root]
-    ina = [P for P in candidate_pool if P not in Z] # Assumes pool has no root/singletons
-    
-    if not acti or not ina:
-        return None, None, 0.0, 0.0, None, None
-        
-    P_d = rng.choice(acti) # Potency to drop
-    P_a = rng.choice(ina)  # Potency to add
-    
-    Z_prop = (Z - {P_d}) | {P_a}
-    
-    # Since we picked P_d and P_a uniformly, the Z-swap part is symmetric.
-    # Q_swap(Z'|Z) = 1/|acti| * 1/|ina|
-    # Q_swap(Z|Z') = 1/|acti'| * 1/|ina'| 
-    # Here |acti'| = |acti| and |ina'| = |ina|. So Q_swap is symmetric.
-    # The Hastings ratio only depends on the *rewiring* step.
-    
-    log_rho = math.log(rho)
-    log_one_minus_rho = math.log(1 - rho)
-
-    # --- 2. Stochastic Rewire (Forward) ---
-    # Propose A' based on Z_prop and P_a
-    
-    A_pruned = {e: v for e, v in A.items() if P_d not in e}
-    A_prop = dict(A_pruned)
-    log_q_fwd_rewire = 0.0
-
-    # Find all potential edges for the *new* node P_a within the *new* set Z_prop
-    potential_edges_fwd = []
-    for P_other in Z_prop:
-        if P_other == P_a: continue
-        # R -> P_a
-        if admissible_edge(P_other, P_a, unit_drop):
-            potential_edges_fwd.append((P_other, P_a))
-        # P_a -> Q
-        if admissible_edge(P_a, P_other, unit_drop):
-            potential_edges_fwd.append((P_a, P_other))
-            
-    # For each potential edge, flip a coin
-    for edge in potential_edges_fwd:
-        if rng.random() < rho:
-            A_prop[edge] = 1
-            log_q_fwd_rewire += log_rho
-        else:
-            # No edge, do nothing to A_prop
-            log_q_fwd_rewire += log_one_minus_rho
-
-    # --- 3. Calculate Reverse Probability ---
-    # What's the probability of stochastically generating the *original*
-    # edges connected to P_d?
-    
-    log_q_rev_rewire = 0.0
-    
-    # Find all potential edges for the *old* node P_d within the *old* set Z
-    potential_edges_rev = []
-    for P_other in Z:
-        if P_other == P_d: continue
-        # R -> P_d
-        if admissible_edge(P_other, P_d, unit_drop):
-            potential_edges_rev.append((P_other, P_d))
-        # P_d -> Q
-        if admissible_edge(P_d, P_other, unit_drop):
-            potential_edges_rev.append((P_d, P_other))
-
-    # Calculate the probability of generating the *exact* set of edges
-    # that were connected to P_d in the original graph A.
-    for edge in potential_edges_rev:
-        if A.get(edge, 0) == 1:
-            # This edge *existed*. Prob of generating it is rho.
-            log_q_rev_rewire += log_rho
-        else:
-            # This edge *did not exist*. Prob of *not* generating it is (1-rho).
-            log_q_rev_rewire += log_one_minus_rho
-
-    return Z_prop, A_prop, log_q_fwd_rewire, log_q_rev_rewire, P_d, P_a
-
-# ==============================================================================
-# === 3. THE NEW MCMC FUNCTION (Metropolis-within-Gibbs) =======================
-# ==============================================================================
-
-def mcmc_map_search_clever_mwg(
-    S: List[str],
-    trees: List["TreeNode"],
-    leaf_type_maps: List[Dict[str, str]],
-    all_B_sets: List[Dict[TreeNode, Set[str]]],
-    priors: "Priors",
-    *,
-    unit_drop_edges: bool = True,
-    fixed_k: Optional[int] = None,
-    steps: int = 6000,
-    burn_in: int = 1500,
-    thin: int = 10,
-    seed: int = 123,
-    progress: bool = True,
-    candidate_pool: Optional[List[FrozenSet[str]]] = None,
-    fitch_probs: Optional[Dict[FrozenSet[str], float]] = None,
-    # New params to control inner loops
-    a_step_inner_loops: int = 5,
-    z_step_inner_loops: int = 1
-) -> Tuple["Structure", float, Dict]:
-    """
-    Samples over Z and A using Metropolis-within-Gibbs with "clever"
-    asymmetric proposals and the correct Metropolis-Hastings acceptance.
-    
-    Target Distribution: log P(Z) + log P(A|Z) + log L(Data|Z,A)
-    """
-    rng = random.Random(seed)
-
-    # --- 1. Initialization ---
-    if candidate_pool is None:
-        candidate_pool = collect_fitch_multis(S, trees, leaf_type_maps)
-    
-    if fitch_probs is None:
-        fitch_probs_list = compute_fitch_potency_probs(S, trees, leaf_type_maps)
-        fitch_probs = {p: prob for p, prob in fitch_probs_list}
-        if not fitch_probs: fitch_probs = {} # Handle empty case
-
-    # Seed state (re-using your logic)
-    singles = {frozenset([t]) for t in S}
-    root = frozenset(S)
-    if priors.potency_mode == "fixed_k" and fixed_k is not None:
-        Z0 = set(singles); Z0.add(root)
-        available = [P for P in candidate_pool if P != root]
-        needed = max(0, fixed_k - 1)
-        if len(available) < needed:
-             raise RuntimeError(f"Not enough candidates ({len(available)}) to seed fixed_k={fixed_k}")
-        Z0.update(rng.sample(available, needed))
-    else:
-        # Fallback for Bernoulli
-        Z0 = set(singles); Z0.add(root)
-        available = [P for P in candidate_pool if P != root]
-        sprinkle = min(5, len(available))
-        if sprinkle:
-            Z0.update(rng.sample(available, sprinkle))
-
-    A0 = build_mid_sized_connected_dag(Z0, keep_prob=0.35, rng=rng)
-    current_struct = Structure(S, Z0, A0, unit_drop=unit_drop_edges)
-
-    # --- 2. Initial State Scoring ---
-    logp_Z_curr = priors.log_prior_Z(S, current_struct.Z_active)
-    
-    all_admiss_curr = current_struct.all_edge_pairs()
-    num_admiss_curr = len(all_admiss_curr)
-    admiss_set_curr = set(all_admiss_curr) # For quick lookup
-    
-    logp_A_curr = priors.log_prior_A(
-        current_struct.Z_active, current_struct.A, 
-        unit_drop=unit_drop_edges,
-        num_admissible_edges=num_admiss_curr
-    )
-    
-    log_L_curr = get_log_likelihood(
-        current_struct, trees, leaf_type_maps, all_B_sets
-    )
-    
-    current_score = logp_Z_curr + logp_A_curr + log_L_curr
-    
-    if not math.isfinite(current_score):
-        # Add retry logic if needed, omitted here for brevity
-        raise RuntimeError("Could not find a finite-scoring starting point for MCMC.")
-    
-    # === ADDED: PRINT INITIAL STATE ===
-    _print_full_state(current_struct, current_score, "=== INITIAL MCMC STATE ===")
-
-    best_struct = current_struct.clone()
-    best_score = current_score
-
-    # --- 3. MCMC Loop Stats ---
-    kept_Z = []
-    kept_scores = []
-    all_scores_trace = [current_score]
-    accepts_A = 0
-    tried_A = 0
-    accepts_Z = 0
-    tried_Z = 0
-
-    iterator = range(steps)
-    if progress:
-        iterator = trange(steps, desc="MCMC (Clever MwG)", leave=True)
-
-    # --- 4. Main MCMC Loop ---
-    for it in iterator:
-        
-        # === Step 1: A-Step (Metropolis-within-Gibbs) ===
-        # Propose a new A, given Z is fixed at current_struct.Z_active
-        
-        for _ in range(a_step_inner_loops):
-            tried_A += 1
-
-            A_prop, log_q_fwd, log_q_rev, edge_flipped, action_A = _propose_clever_A(
-                current_struct, fitch_probs, rng
-            )
-            
-            if A_prop is None:
-                continue
-
-            # Create the proposed structure (Z is unchanged)
-            prop_struct_A = Structure(S, current_struct.Z_active, A_prop, unit_drop_edges)
-            
-            # Score the proposal
-            logp_Z_prop = logp_Z_curr # Z is fixed
-            logp_A_prop = priors.log_prior_A(
-                prop_struct_A.Z_active, prop_struct_A.A,
-                unit_drop=unit_drop_edges,
-                num_admissible_edges=num_admiss_curr # Num admissible is fixed
-            )
-            log_L_prop = get_log_likelihood(
-                prop_struct_A, trees, leaf_type_maps, all_B_sets
-            )
-            
-            prop_score = logp_Z_prop + logp_A_prop + log_L_prop
-            
-            if math.isfinite(prop_score):
-                delta_score = prop_score - current_score
-                log_hastings = log_q_rev - log_q_fwd
-                log_alpha = min(0.0, delta_score + log_hastings)
-                
-                if (log_alpha >= 0.0) or (rng.random() < math.exp(log_alpha)):
-                    # === ADDED: PRINT A-STEP ACCEPTANCE ===
-                    print(f"\n[ACCEPT A-Step | Iter {it}] Score: {current_score:.4f} -> {prop_score:.4f} (delta={delta_score:.4f})")
-                    print(f"  Action: {action_A.capitalize()} edge {pot_str(edge_flipped[0])} -> {pot_str(edge_flipped[1])}")
-                    accepts_A += 1
-                    current_struct = prop_struct_A
-                    current_score = prop_score
-                    logp_A_curr = logp_A_prop # Z and num_admiss are same
-                    log_L_curr = log_L_prop
-                    # logp_Z_curr is unchanged
-
-
-        # === Step 2: Z-Step (Metropolis-within-Gibbs) ===
-        # Propose a new (Z, A) jointly
-        
-        for _ in range(z_step_inner_loops):
-            tried_Z += 1
-
-            Z_prop, A_prop, log_q_fwd_rewire, log_q_rev_rewire, P_dropped, P_added = _propose_clever_Z(
-                current_struct, priors.rho, rng, candidate_pool
-            )
-            
-            if Z_prop is None:
-                continue
-            
-            # Create the proposed structure
-            prop_struct_Z = Structure(S, Z_prop, A_prop, unit_drop_edges)
-
-            # Score the proposal
-            logp_Z_prop = priors.log_prior_Z(S, prop_struct_Z.Z_active)
-            if not math.isfinite(logp_Z_prop):
-                continue # Invalid Z (e.g., wrong k)
-            
-            all_admiss_prop = prop_struct_Z.all_edge_pairs()
-            num_admiss_prop = len(all_admiss_prop)
-            
-            logp_A_prop = priors.log_prior_A(
-                prop_struct_Z.Z_active, prop_struct_Z.A,
-                unit_drop=unit_drop_edges,
-                num_admissible_edges=num_admiss_prop
-            )
-            
-            log_L_prop = get_log_likelihood(
-                prop_struct_Z, trees, leaf_type_maps, all_B_sets
-            )
-            
-            prop_score = logp_Z_prop + logp_A_prop + log_L_prop
-
-            if math.isfinite(prop_score):
-                delta_score = prop_score - current_score
-                log_hastings = log_q_rev_rewire - log_q_fwd_rewire
-                log_alpha = min(0.0, delta_score + log_hastings)
-
-                if (log_alpha >= 0.0) or (rng.random() < math.exp(log_alpha)):
-
-                    # === ADDED: PRINT Z-STEP ACCEPTANCE ===
-                    print(f"\n[ACCEPT Z-Step | Iter {it}] Score: {current_score:.4f} -> {prop_score:.4f} (delta={delta_score:.4f})")
-                    print(f"  Action: Dropped {pot_str(P_dropped)}")
-                    print(f"  Action: Added   {pot_str(P_added)}")
-
-                    accepts_Z += 1
-                    current_struct = prop_struct_Z
-                    current_score = prop_score
-                    # Update all components of the score
-                    logp_Z_curr = logp_Z_prop
-                    logp_A_curr = logp_A_prop
-                    log_L_curr = log_L_prop
-                    num_admiss_curr = num_admiss_prop
-                    admiss_set_curr = set(all_admiss_prop)
-
-
-        # === Step 3: Post-Iteration Updates ===
-        all_scores_trace.append(current_score)
-        
-        if current_score > best_score:
-            best_struct = current_struct.clone()
-            best_score = current_score
-            
-        # Collect sample
-        if it >= burn_in and ((it - burn_in) % thin == 0):
-            kept_Z.append({P for P in current_struct.Z_active if len(P) >= 2})
-            kept_scores.append(current_score)
-
-        if progress:
-            iterator.set_postfix({
-                "logpost": f"{current_score:.3f}",
-                "best": f"{best_score:.3f}",
-                "acc_A": f"{(accepts_A/max(1,tried_A)):.2f}",
-                "acc_Z": f"{(accepts_Z/max(1,tried_Z)):.2f}",
-                "|Z|": len(current_struct.Z_active) - len(S),
-                "|A|": len(current_struct.A)
-            })
-
-    # === ADDED: PRINT FINAL STATE ===
-    _print_full_state(best_struct, best_score, "=== FINAL BEST MCMC STATE ===")
-
-
-    # --- 5. Final Stats Calculation ---
-    counts = {P: 0 for P in candidate_pool}
-    for Zs in kept_Z:
-        for P in Zs:
-            if P in counts:
-                counts[P] += 1
-    total_kept = max(1, len(kept_Z))
-    inclusion = {P: counts[P] / total_kept for P in counts}
-
-    stats = {
-        "samples_Z": kept_Z,
-        "scores": kept_scores,
-        "all_scores_trace": all_scores_trace,
-        "accept_rate_A": accepts_A / max(1, tried_A),
-        "accept_rate_Z": accepts_Z / max(1, tried_Z),
-        "accept_rate_overall": (accepts_A + accepts_Z) / max(1, tried_A + tried_Z),
-        "inclusion": inclusion,
-    }
-    return best_struct, best_score, stats
-
-def _mcmc_worker_clever_mwg(args: tuple):
-    """
-    A simple worker function that unpacks arguments and calls the
-    new Metropolis-within-Gibbs MCMC sampler.
-    This is the target for each parallel process.
-    """
-    # Unpack all the arguments. Order MUST match the 'tasks' tuple below.
-    (
-        S, trees, leaf_type_maps, all_B_sets, priors,
-        unit_drop_edges, fixed_k, steps, burn_in, thin, 
-        seed, progress,  # 'progress' will be passed as False for workers
-        candidate_pool, fitch_probs,
-        a_step_inner_loops, z_step_inner_loops
-    ) = args
-
-    # Call the new MCMC sampler
-    return mcmc_map_search_clever_mwg(
-        S=S,
-        trees=trees,
-        leaf_type_maps=leaf_type_maps,
-        all_B_sets=all_B_sets,
-        priors=priors,
-        unit_drop_edges=unit_drop_edges,
-        fixed_k=fixed_k,
-        steps=steps,
-        burn_in=burn_in,
-        thin=thin,
-        seed=seed,
-        progress=progress, # This should be False to avoid console spam
-        candidate_pool=candidate_pool,
-        fitch_probs=fitch_probs,
-        a_step_inner_loops=a_step_inner_loops,
-        z_step_inner_loops=z_step_inner_loops
-    )
-
-# ==============================================================================
-# === 2. PARALLEL MCMC RUNNER ==================================================
-# ==============================================================================
-
-def run_mcmc_clever_mwg_parallel(
-    S: List[str],
-    trees: List["TreeNode"],
-    leaf_type_maps: List[Dict[str, str]],
-    all_B_sets: List[Dict[TreeNode, Set[str]]],
-    priors: "Priors",
-    *,
-    unit_drop_edges: bool = True,
-    fixed_k: Optional[int] = None,
-    steps: int = 6000,
-    burn_in: int = 1500,
-    thin: int = 10,
-    n_chains: int = 4,        # Replaces 'restarts'
-    base_seed: int = 123,
-    candidate_pool: Optional[List[FrozenSet[str]]] = None,
-    fitch_probs: Optional[Dict[FrozenSet[str], float]] = None,
-    a_step_inner_loops: int = 5,
-    z_step_inner_loops: int = 1
-):
-    """
-    Runs multiple "Clever MwG" MCMC chains in parallel
-    and returns the best result found.
-    """
-    if n_chains <= 0:
-        n_chains = max(1, os.cpu_count() - 1)
-
-    # Generate unique seeds for each independent chain
-    seeds = [base_seed + i for i in range(n_chains)]
-
-    # Package arguments for each worker. Each worker gets a different seed.
-    tasks = []
-    for seed in seeds:
-        tasks.append((
-            S, trees, leaf_type_maps, all_B_sets, priors,
-            unit_drop_edges, fixed_k, steps, burn_in, thin, 
-            seed, 
-            True, # 'progress' = False for workers
-            candidate_pool, fitch_probs,
-            a_step_inner_loops, z_step_inner_loops
-        ))
-
-    best_struct = None
-    best_score = float("-inf")
-    all_stats = []
-
-    print(f"[Info] Starting {n_chains} parallel chains (Clever Metropolis-within-Gibbs)...")
-    
-    with ProcessPoolExecutor(max_workers=min(n_chains, os.cpu_count() - 1)) as executor:
-        # Submit all tasks
-        futures = [executor.submit(_mcmc_worker_clever_mwg, t) for t in tasks]
-
-        for future in as_completed(futures):
-            try:
-                # Unpack results from a completed chain
-                struct, score, stats = future.result()
-                all_stats.append(stats)
-
-                # Keep track of the single best solution found across all chains
-                if score > best_score:
-                    best_score = score
-                    best_struct = struct
-
-            except Exception as e:
-                print(f"A chain failed with an error: {e}")
-
-        # futures = {executor.submit(_mcmc_worker_clever_mwg, t): i for i, t in enumerate(tasks)}
-
-        # # Use tqdm to show progress as chains complete
-        # results_iterator = as_completed(futures)
-        # if 'trange' in globals(): # Check if tqdm is available
-        #      results_iterator = trange(
-        #          as_completed(futures), 
-        #          total=n_chains, 
-        #          desc="Running Clever MCMC Chains",
-        #          leave=True
-        #      )
-
-        # for future in results_iterator:
-        #     try:
-        #         # Unpack results from a completed chain
-        #         struct, score, stats = future.result()
-        #         all_stats.append(stats)
-
-        #         # Keep track of the single best solution found across all chains
-        #         if score > best_score:
-        #             best_score = score
-        #             best_struct = struct
-
-        #     except Exception as e:
-        #         print(f"\n[ERROR] A clever MCMC chain failed with an error: {e}", file=sys.stderr)
-        #         traceback.print_exc()
-
-    print(f"[Info] All clever MCMC chains finished. Best score found: {best_score:.4f}")
-    return best_struct, best_score, all_stats
 
 
 def _mcmc_worker_A(args: tuple):
@@ -3661,19 +2912,17 @@ def _mcmc_worker_A(args: tuple):
     This is the target for each parallel process.
     """
     # Unpack all the arguments passed by the main parallel function
-    (S, trees, leaf_type_maps, all_B_sets, priors, unit_drop_edges, fixed_k,
+    (S, trees, leaf_type_maps, priors, unit_drop_edges, fixed_k,
      steps, burn_in, thin, seed, progress, candidate_pool, block_swap_sizes, Z) = args
 
     # Call the MCMC sampler with the unique seed for this worker
     # Note: We disable the progress bar for worker processes to keep the console clean
     return mcmc_map_search_only_A(
-        S=S, trees=trees, leaf_type_maps=leaf_type_maps, all_B_sets=all_B_sets, priors=priors,
+        S=S, trees=trees, leaf_type_maps=leaf_type_maps, priors=priors,
         unit_drop_edges=unit_drop_edges, fixed_k=fixed_k, steps=steps,
         burn_in=burn_in, thin=thin, seed=seed, progress=True,
         candidate_pool=candidate_pool, block_swap_sizes=block_swap_sizes, Z = Z
     )
-
-
 
 def _mcmc_worker_Z(args: tuple):
     """
@@ -3681,13 +2930,13 @@ def _mcmc_worker_Z(args: tuple):
     This is the target for each parallel process.
     """
     # Unpack all the arguments passed by the main parallel function
-    (S, trees, leaf_type_maps, all_B_sets, priors, unit_drop_edges, fixed_k,
+    (S, trees, leaf_type_maps, priors, unit_drop_edges, fixed_k,
      steps, burn_in, thin, seed, progress, candidate_pool, block_swap_sizes, fitch_probs) = args
 
     # Call the MCMC sampler with the unique seed for this worker
     # Note: We disable the progress bar for worker processes to keep the console clean
     return mcmc_map_search(
-        S=S, trees=trees, leaf_type_maps=leaf_type_maps, all_B_sets=all_B_sets, priors=priors,
+        S=S, trees=trees, leaf_type_maps=leaf_type_maps, priors=priors,
         unit_drop_edges=unit_drop_edges, fixed_k=fixed_k, steps=steps,
         burn_in=burn_in, thin=thin, seed=seed, progress=True,
         candidate_pool=candidate_pool, block_swap_sizes=block_swap_sizes, fitch_probs = fitch_probs
@@ -3697,7 +2946,6 @@ def run_mcmc_only_A_parallel (
     S: List[str],
     trees: List["TreeNode"],
     leaf_type_maps: List[Dict[str, str]],
-    all_B_sets: List[Dict[TreeNode, Set[str]]], # <--- ADD HERE
     priors: "Priors",
     *,
     unit_drop_edges: bool = True,
@@ -3724,7 +2972,7 @@ def run_mcmc_only_A_parallel (
     tasks = []
     for seed in seeds:
         tasks.append((
-            S, trees, leaf_type_maps, all_B_sets, priors, unit_drop_edges, fixed_k,
+            S, trees, leaf_type_maps, priors, unit_drop_edges, fixed_k,
             steps, burn_in, thin, seed, True, candidate_pool, block_swap_sizes, Z
         ))
 
@@ -3758,7 +3006,6 @@ def run_mcmc_only_Z_parallel(
     S: List[str],
     trees: List["TreeNode"],
     leaf_type_maps: List[Dict[str, str]],
-    all_B_sets: List[Dict[TreeNode, Set[str]]], # <--- ADD HERE
     priors: "Priors",
     *,
     unit_drop_edges: bool = True,
@@ -3785,7 +3032,7 @@ def run_mcmc_only_Z_parallel(
     tasks = []
     for seed in seeds:
         tasks.append((
-            S, trees, leaf_type_maps, all_B_sets, priors, unit_drop_edges, fixed_k,
+            S, trees, leaf_type_maps, priors, unit_drop_edges, fixed_k,
             steps, burn_in, thin, seed, True, candidate_pool, block_swap_sizes, fitch_probs
         ))
 
@@ -3804,638 +3051,6 @@ def run_mcmc_only_Z_parallel(
                 all_stats.append(stats)
 
                 # Keep track of the single best solution found across all chains
-                if score > best_score:
-                    best_score = score
-                    best_struct = struct
-
-            except Exception as e:
-                print(f"A chain failed with an error: {e}")
-
-    print(f"[Info] All chains finished. Best score found: {best_score:.4f}")
-    return best_struct, best_score, all_stats
-
-# ==============================================================================
-# SECTION Z: MCMC Functions for Potency Sets (Z) using Collapsed Data
-# ==============================================================================
-
-# --- Function 1: Single-Chain MCMC for Z (adapted from _mcmc_worker_Z_collapsed) ---
-def mcmc_map_search_only_Z_collapsed(
-    S: List[str],
-    collapsed_data: pd.DataFrame, # <-- Accepts collapsed_data
-    priors: Priors,
-    *,
-    unit_drop_edges: bool = False, # Match Z-only assumption (A is fully connected conceptually)
-    fixed_k: Optional[int] = None,
-    steps: int = 500,
-    burn_in: int = 100,
-    thin: int = 10,
-    seed: int = 123,
-    progress: bool = True, # Controls progress bar display
-    candidate_pool: Optional[List[FrozenSet[str]]] = None,
-    block_swap_sizes: Tuple[int, ...] = (1,),
-    fitch_probs: Optional[Dict[FrozenSet[str], float]] = None
-) -> Tuple[Optional[Structure], float, Dict]:
-    """ Single-chain MCMC sampler for Z using collapsed data. A is rebuilt deterministically. """
-
-    rng_worker = random.Random(seed) # Use 'rng_worker' internally for consistency
-
-    # --- Initialization Logic (copied/adapted from original _mcmc_worker_Z_collapsed) ---
-    singles = {frozenset([t]) for t in S}
-    root = frozenset(S)
-    if candidate_pool is None: # Fallback if pool wasn't generated
-         candidate_pool = [P for P in all_nonempty_subsets(S) if len(P) >= 2]
-         candidate_pool.append(root)
-         candidate_pool = sorted(list(set(candidate_pool)), key=lambda x: (len(x), tuple(sorted(list(x)))))
-    pool_set = set(candidate_pool) # Needed for inclusion calculation later
-
-    # Initial Z state determination
-    if priors.potency_mode == "fixed_k" and fixed_k is not None:
-         Z0 = set(singles); Z0.add(root)
-         available = [P for P in candidate_pool if P != root and P not in Z0]
-         needed = max(0, fixed_k - 1)
-         if len(available) < needed: raise RuntimeError(f"Not enough candidates ({len(available)}) to seed fixed_k={fixed_k}")
-         Z0.update(rng_worker.sample(available, needed))
-    else: # Bernoulli or unspecified k
-        Z0 = set(singles); Z0.add(root)
-        sprinkle = min(max(0, len([p for p in candidate_pool if p != root])//20), 5) # Sprinkle based on non-root pool
-        available = [P for P in candidate_pool if P != root and P not in Z0]
-        if sprinkle > 0 and len(available) >= sprinkle:
-            Z0.update(rng_worker.sample(available, sprinkle))
-
-    # Create initial structure using SubsetReach
-    def make_struct_no_reach(Zset):
-         A = _full_edges_for_Z(Zset, unit_drop_edges) # A is conceptually fully connected
-         struct = Structure(S, Zset, A, unit_drop=unit_drop_edges)
-         struct.Reach = SubsetReach() # IMPORTANT for Z-only scoring
-         return struct
-
-    current = make_struct_no_reach(Z0)
-    current_logp_Z = priors.log_prior_Z(S, current.Z_active)
-    # CALL COLLAPSED SCORER
-    curr_score, _ = score_structure_no_edge_prior_collapsed(current, collapsed_data, priors, precomputed_logp_Z=current_logp_Z)
-
-    # Retry initialization if needed
-    retry_count = 0
-    while not math.isfinite(curr_score) and retry_count < 20:
-        if priors.potency_mode == "fixed_k" and fixed_k is not None:
-             Z0 = set(singles); Z0.add(root)
-             available = [P for P in candidate_pool if P != root and P not in Z0]
-             needed = max(0, fixed_k - 1)
-             if len(available) < needed: raise RuntimeError(f"Not enough candidates ({len(available)}) to seed fixed_k={fixed_k} on retry")
-             Z0.update(rng_worker.sample(available, needed))
-        else:
-            Z0 = set(singles); Z0.add(root)
-            sprinkle = min(5, len([p for p in candidate_pool if p != root]))
-            available = [P for P in candidate_pool if P != root and P not in Z0]
-            if sprinkle > 0 and len(available) >= sprinkle:
-                 Z0.update(rng_worker.sample(available, sprinkle))
-        current = make_struct_no_reach(Z0)
-        current_logp_Z = priors.log_prior_Z(S, current.Z_active)
-        # CALL COLLAPSED SCORER
-        curr_score, _ = score_structure_no_edge_prior_collapsed(current, collapsed_data, priors, precomputed_logp_Z=current_logp_Z)
-        retry_count += 1
-
-    if not math.isfinite(curr_score):
-        print(f"[ERROR] mcmc_map_search_only_Z (Seed {seed}): Could not find a finite-scoring starting point.", file=sys.stderr)
-        return None, float('-inf'), {"error": "Initialization failed", "seed": seed, "scores": [], "all_scores_trace": []}
-
-
-    # --- MCMC Loop (adapted from original _mcmc_worker_Z_collapsed) ---
-    best_struct = current.clone()
-    best_score = curr_score
-    kept_Z = []
-    kept_scores = []
-    all_scores_trace = [curr_score]
-    accepts = 0
-    tried = 0
-
-    # Define proposal function (fixed-k swap adapted slightly)
-    def propose_fixed_k_swap_Z(Zset: Set[FrozenSet[str]]) -> Tuple[Optional[Set[FrozenSet[str]]], Optional[Dict]]:
-        root = frozenset(S)
-        acti = [P for P in Zset if len(P) >= 2 and P != root] # Active multis excluding root
-        ina = [P for P in candidate_pool if P not in Zset]
-        if not acti or not ina: return None, None
-        # m = rng_worker.choice(block_swap_sizes) # Use local RNG
-        m = 1 # Keep it simple, swap 1 based on previous fixes
-        m = max(1, min(m, len(acti), len(ina)))
-
-        # Weighted sampling (if fitch_probs provided)
-        if fitch_probs:
-            add_weights = [fitch_probs.get(p, 0.001) for p in ina]
-            drop_weights = [1.0 - fitch_probs.get(p, 0.999) for p in acti]
-            # Handle potential zero weights
-            add = random.choices(ina, weights=add_weights, k=m) if sum(add_weights) > 1e-9 else rng_worker.sample(ina, m)
-            drop = random.choices(acti, weights=drop_weights, k=m) if sum(drop_weights) > 1e-9 else rng_worker.sample(acti, m)
-        else: # Uniform sampling
-            add = rng_worker.sample(ina, m)
-            drop = rng_worker.sample(acti, m)
-
-        Z2 = set(Zset)
-        Z2.difference_update(drop) # Use set ops for safety
-        Z2.update(add)             # Use set ops for safety
-        details = {'drop': drop, 'add': add}
-        return Z2, details
-
-    # Define proposal for Bernoulli mode (toggle)
-    def propose_toggle_Z(Zset: Set[FrozenSet[str]]) -> Optional[Set[FrozenSet[str]]]:
-         pool_multis = [p for p in candidate_pool if p != root] # Exclude root from toggling
-         if not pool_multis: return None
-         # Weighted toggle if fitch_probs available
-         if fitch_probs:
-             weights = [fitch_probs.get(p, 0.001) for p in pool_multis]
-             # Handle potential zero weights
-             P = random.choices(pool_multis, weights=weights, k=1)[0] if sum(weights) > 1e-9 else rng_worker.choice(pool_multis)
-         else: # Uniform toggle
-             P = rng_worker.choice(pool_multis)
-
-         Z2 = set(Zset)
-         if P in Z2: Z2.remove(P)
-         else: Z2.add(P)
-         return Z2
-
-    # Iterator setup
-    iterator = range(steps)
-    # Use progress bar only if requested
-    if progress:
-        try:
-             iterator = trange(steps, desc=f"MCMC-Z (Seed {seed})", leave=True) # Use leave=True for single chain
-        except Exception:
-             print(f"[Warning] Failed to initialize tqdm progress bar for Seed {seed}.", file=sys.stderr)
-             iterator = range(steps) # Fallback
-    counto = 0
-    # --- MCMC ITERATION ---
-    for it in iterator:
-        prop_Z = None
-        proposal_details = None
-
-        # Choose proposal based on prior mode
-        if priors.potency_mode == "fixed_k" and fixed_k is not None:
-             prop_Z, proposal_details = propose_fixed_k_swap_Z(current.Z_active)
-             proposed_logp_Z = current_logp_Z # Prior doesn't change for fixed-k swap
-        else: # Bernoulli mode
-             prop_Z = propose_toggle_Z(current.Z_active)
-             if prop_Z is None: # No valid toggle possible
-                 tried += 1 # Count attempt even if no proposal generated
-                 continue
-             # Recalculate prior for the proposed Z set
-             proposed_logp_Z = priors.log_prior_Z(S, prop_Z)
-
-        if prop_Z is None: # No proposal could be made (e.g., fixed_k swap failed)
-            tried += 1
-            continue
-
-        prop_struct = make_struct_no_reach(prop_Z)
-        # CALL COLLAPSED SCORER
-        prop_score, _ = score_structure_no_edge_prior_collapsed(prop_struct, collapsed_data, priors, precomputed_logp_Z=proposed_logp_Z)
-
-        accept = False
-        if math.isfinite(prop_score):
-            delta = prop_score - curr_score
-            # Avoid math domain error for very negative delta
-            accept_prob = math.exp(delta) if delta > -700 else 0.0 # Approx threshold for exp underflow
-            accept = (delta >= 0) or (rng_worker.random() < accept_prob)
-
-        tried += 1
-        if accept:
-            accepts += 1
-            current = prop_struct
-            curr_score = prop_score
-            current_logp_Z = proposed_logp_Z # Update current prior score
-
-            if curr_score > best_score:
-                best_struct = current.clone() # Clone the accepted state
-                best_score = curr_score
-        counto = counto + 1
-        all_scores_trace.append(curr_score) # Log score at every step
-        # print(f"Iteration = {counto}, current score = {curr_score}")
-
-        # Sample collection
-        if it >= burn_in and ((it - burn_in) % thin == 0):
-            kept_Z.append({P for P in current.Z_active if len(P) >= 2})
-            kept_scores.append(curr_score)
-
-        # Update progress bar (if used)
-        if progress and isinstance(iterator, tqdm): # Check if it's a tqdm object
-            iterator.set_postfix({
-                "logpost": f"{curr_score:.3f}",
-                "best": f"{best_score:.3f}",
-                "acc": f"{(accepts/max(1,tried)):.2f}"
-            }, refresh=True) # Use refresh=True
-
-    # Close progress bar if used
-    if progress and isinstance(iterator, tqdm):
-        iterator.close()
-
-
-    # Final stats calculation
-    counts: Dict[FrozenSet[str], int] = defaultdict(int)
-    # pool_set includes root and singletons, filter for inclusion calc
-    pool_multis_set = {p for p in pool_set if len(p) >= 2}
-    for Zs in kept_Z:
-        for P in Zs:
-            if P in pool_multis_set: # Only count candidates in the multi pool
-                counts[P] += 1
-    total_kept = max(1, len(kept_Z))
-    # Calculate inclusion only over the multi-type candidate pool
-    inclusion = {P: counts[P] / total_kept for P in pool_multis_set}
-
-    stats = {
-        "samples_Z": kept_Z,
-        "scores": kept_scores,
-        "all_scores_trace": all_scores_trace,
-        "accept_rate": (accepts / max(1, tried)),
-        "inclusion": inclusion,
-        "seed": seed # Include seed for reference
-    }
-    # Ensure best_struct is returned, even if it's just the initial one
-    if best_struct is None and math.isfinite(best_score):
-         best_struct = current.clone() # Fallback if somehow best wasn't updated
-
-    return best_struct, best_score, stats
-
-
-# --- Function 2: Worker for Z-only MCMC (Calls Function 1) ---
-def _mcmc_worker_Z_collapsed(args: tuple):
-    """ Worker function for Z-only MCMC using collapsed data. """
-    (S, collapsed_data, priors, unit_drop_edges, fixed_k,
-     steps, burn_in, thin, seed, progress, # 'progress' here is usually False for workers
-     candidate_pool, block_swap_sizes, fitch_probs) = args
-
-    # Call the single-chain function
-    return mcmc_map_search_only_Z_collapsed(
-        S=S, collapsed_data=collapsed_data, priors=priors,
-        unit_drop_edges=unit_drop_edges, fixed_k=fixed_k, steps=steps,
-        burn_in=burn_in, thin=thin, seed=seed, progress=progress, # Pass worker's progress flag
-        candidate_pool=candidate_pool, block_swap_sizes=block_swap_sizes,
-        fitch_probs=fitch_probs
-    )
-
-
-# --- Function 3: Parallel Runner for Z-only MCMC (Calls Function 2 via submit) ---
-def run_mcmc_only_Z_parallel_collapsed(
-    S: List[str],
-    collapsed_data: pd.DataFrame, # <-- Takes DataFrame
-    priors: Priors,
-    *,
-    unit_drop_edges: bool = False, # Match Z-only assumption
-    fixed_k: Optional[int] = None,
-    steps: int = 500,
-    burn_in: int = 100,
-    thin: int = 10,
-    base_seed: int = 123,
-    candidate_pool: Optional[List[FrozenSet[str]]] = None,
-    block_swap_sizes: Tuple[int, ...] = (1,), # Default to 1 for Z-only
-    n_chains: int = 4,
-    fitch_probs: Optional[Dict[FrozenSet[str], float]] = None
-):
-    """ Runs multiple Z-only MCMC chains in parallel using collapsed data. """
-    if n_chains <= 0:
-        n_chains = max(1, os.cpu_count() - 1)
-
-
-    seeds = [base_seed + i for i in range(n_chains)]
-
-    # Package arguments for the worker function _mcmc_worker_Z_collapsed
-    tasks = []
-    for seed in seeds:
-        tasks.append((
-            S, collapsed_data, priors, unit_drop_edges, fixed_k,
-            steps, burn_in, thin, seed, True, # Progress=False for workers
-            candidate_pool, block_swap_sizes, fitch_probs
-        ))
-
-    best_struct = None
-    best_score = float("-inf")
-    all_stats = []
-
-    print(f"[Info] Starting {n_chains} parallel MCMC chains (Z-only search)...")
-
-    
-    with ProcessPoolExecutor(max_workers=min(n_chains, os.cpu_count() - 1)) as executor:
-        # Submit the COLLAPSED worker function
-        futures = {executor.submit(_mcmc_worker_Z_collapsed, t): i for i, t in enumerate(tasks)}
-
-        for future in as_completed(futures): # Iterate using as_completed directly
-            # chain_index = futures[future]
-            try:
-                # Unpack results
-                struct, score, stats = future.result()
-                all_stats.append(stats)
-                # Track best
-                if score > best_score: # Check score validity
-                    best_score = score
-                    best_struct = struct
-            except Exception as e:
-                print(f"A chain failed with an error: {e}")
-
-    print(f"[Info] All chains finished. Best score found: {best_score:.4f}")
-    return best_struct, best_score, all_stats
-
-# ==============================================================================
-# SECTION A: MCMC Functions for Edges (A) using Collapsed Data
-# ==============================================================================
-
-# --- Function 4: Single-Chain MCMC for A (adapted from _mcmc_worker_A_collapsed) ---
-def mcmc_map_search_only_A_collapsed(
-    S: List[str],
-    collapsed_data: pd.DataFrame, # <-- Accepts collapsed_data
-    priors: Priors,
-    Z_fixed: Set[FrozenSet[str]], # <-- Requires fixed Z
-    *,
-    unit_drop_edges: bool = True,
-    # fixed_k is needed for prior calculation, get from len(Z_fixed multis) or pass explicitly
-    fixed_k: Optional[int] = None,
-    steps: int = 600,
-    burn_in: int = 150,
-    thin: int = 10,
-    seed: int = 456,
-    progress: bool = True # Controls progress bar display
-) -> Tuple[Optional[Structure], float, Dict]:
-    """ Single-chain MCMC sampler for A using collapsed data and fixed Z. """
-
-    rng_worker = random.Random(seed) # Use local RNG
-
-    # --- Initialization ---
-    # Calculate total admissible edges needed for fast prior calculation
-    all_admissible_pairs = [
-         (P, Q) for P in Z_fixed for Q in Z_fixed
-         if admissible_edge(P, Q, unit_drop_edges)
-    ]
-    num_admissible_edges = len(all_admissible_pairs)
-
-    # Determine fixed_k for prior calculation if not provided
-    if fixed_k is None:
-        fixed_k = sum(1 for P in Z_fixed if len(P) >= 2)
-
-    # Calculate fixed log P(Z) once
-    # Use a temporary prior object if mode needs overriding for this calc
-    # prior_for_Z_calc = Priors(potency_mode="fixed_k", fixed_k=fixed_k, rho=priors.rho)
-    logp_Z_fixed = priors.log_prior_Z(S, Z_fixed)
-
-    if not math.isfinite(logp_Z_fixed):
-         print(f"[ERROR] mcmc_map_search_only_A (Seed {seed}): Provided Z_fixed has -inf prior (k={fixed_k}). Cannot proceed.", file=sys.stderr)
-         return None, float('-inf'), {"error": f"Invalid Z prior for k={fixed_k}", "seed": seed, "scores": [], "all_scores_trace": []}
-
-
-    # Seed A with a mid-sized connected DAG
-    A0 = build_mid_sized_connected_dag(Z_fixed, keep_prob=0.35, unit_drop=unit_drop_edges, rng=rng_worker)
-    current = Structure(S, Z_fixed, A0, unit_drop=unit_drop_edges)
-    print("\nInitial Edges mid-size DAG:")
-    edges = sorted([e for e, v in A0.items() if v == 1],
-                   key=lambda e: (len(e[0]), len(e[1]), tuple(sorted(list(e[0]))), tuple(sorted(list(e[1])))))
-    for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
-
-    # Initial scoring using the full collapsed score function
-    # Use the main 'priors' object passed to the function here for P(A|Z)
-    curr_score, _ = score_structure_collapsed(
-         current, collapsed_data, priors, # Use original priors for P(A|Z)
-         num_admissible_edges=num_admissible_edges,
-         precomputed_logp_Z=logp_Z_fixed # Use the precalculated logP(Z)
-    )
-
-    # Retry initialization if score is invalid
-    retry_count = 0
-    while not math.isfinite(curr_score) and retry_count < 20:
-         A0 = build_mid_sized_connected_dag(Z_fixed, keep_prob=0.35, unit_drop=unit_drop_edges, rng=rng_worker)
-         current = Structure(S, Z_fixed, A0, unit_drop=unit_drop_edges)
-         curr_score, _ = score_structure_collapsed(
-              current, collapsed_data, priors,
-              num_admissible_edges=num_admissible_edges,
-              precomputed_logp_Z=logp_Z_fixed
-         )
-         retry_count += 1
-
-    if not math.isfinite(curr_score):
-        print(f"[ERROR] mcmc_map_search_only_A (Seed {seed}): Could not find a finite-scoring starting point.", file=sys.stderr)
-        return None, float('-inf'), {"error": "Initialization failed", "seed": seed, "scores": [], "all_scores_trace": []}
-
-
-    best_struct = current.clone()
-    best_score = curr_score
-
-    if not all_admissible_pairs:
-        print("[Warning] No admissible edges found for the given Z_fixed set. MCMC will not move.")
-
-
-    # --- MCMC Loop (adapted from original _mcmc_worker_A_collapsed) ---
-    kept_A = [] # Store edge sets
-    kept_scores = []
-    all_scores_trace = [curr_score]
-    kept_edge_density = []
-    accepts = 0
-    tried = 0
-
-    # Proposal: Toggle an edge
-    def prop_edge_toggle_A(st: Structure) -> Tuple[Optional[Structure], Optional[Dict]]:
-         if not all_admissible_pairs: return None, None # No possible edges
-         e = rng_worker.choice(all_admissible_pairs) # Use local RNG
-         u, v = e
-         new = st.clone()
-         details = {'edge': e}
-         if st.A.get(e, 0) == 1: # Edge exists, remove it
-             del new.A[e]
-             details['action'] = 'removed'
-             # Use safe full recompute for removal
-             new.recompute_reach() # Recomputes labels_list too if needed
-         else: # Edge doesn't exist, add it
-             new.A[e] = 1
-             details['action'] = 'added'
-             # Use incremental update for addition
-             # Ensure labels_list is correct before calling incremental update
-             if new.labels_list != st.labels_list: new.labels_list = new._sorted_labels()
-             new.update_reach_add_edge(u, v)
-         return new, details
-
-    # Iterator setup
-    iterator = range(steps)
-    if progress:
-        try:
-             iterator = trange(steps, desc=f"MCMC-A (Seed {seed})", leave=True) # Use leave=True
-        except Exception:
-             print(f"[Warning] Failed to initialize tqdm progress bar for Seed {seed}.", file=sys.stderr)
-             iterator = range(steps) # Fallback
-
-    # --- MCMC ITERATION ---
-    counto = 0
-
-    for it in iterator:
-
-
-        if not all_admissible_pairs:
-            # If there are no possible edges, we can't do anything.
-            break
-
-        # 1. Propose a change by picking a random edge to flip
-        edge_to_flip = rng_worker.choice(all_admissible_pairs)
-        u, v = edge_to_flip
-        
-        action = 'added' if current.A.get(edge_to_flip, 0) == 0 else 'removed'
-        last_proposal_details = {'edge': edge_to_flip, 'action': action}
-        
-        prop = current.clone()
-        
-        # Apply the toggle based on the action
-        if action == 'added':
-            # Use the fast, incremental update for additions.
-            prop.A[edge_to_flip] = 1  # <-- YOU WERE MISSING THIS
-            prop.update_reach_add_edge(u, v)
-        else: # action == 'removed'
-            # Use the safe, full re-computation for removals.
-            del prop.A[edge_to_flip]
-            # prop.A[edge_to_flip] = 0  # <-- YOU WERE MISSING THIS
-            prop.update_reach_remove_edge(u, v)
-        
-        # prop.recompute_reach()
-
-        # 2. Score the new structure using the parallel scorer
-        prop_score, _ = score_structure_collapsed(
-             prop, collapsed_data, priors, # Use original priors
-             num_admissible_edges=num_admissible_edges,
-             precomputed_logp_Z=logp_Z_fixed # Keep Z prior fixed
-        )        
-
-        accept = False
-        if math.isfinite(prop_score):
-            delta = prop_score - curr_score
-            accept = (delta >= 0) or (rng_worker.random() < math.exp(delta))
-
-        tried += 1
-        if accept:
-            accepts += 1
-
-            if last_proposal_details and 'edge' in last_proposal_details:
-                edge_details = last_proposal_details
-                edge_str = f"{pot_str(edge_details['edge'][0])} -> {pot_str(edge_details['edge'][1])}"
-                action_str = edge_details['action'].capitalize()
-                print(f"[Accepted Edge]: {action_str} {edge_str} | New Score: {prop_score:.3f}")
-
-            current = prop
-            curr_score = prop_score
-            if curr_score >= best_score:
-                best_struct = current.clone()
-                best_score = curr_score
-        
-        else:
-            if last_proposal_details and 'edge' in last_proposal_details:
-                edge_details = last_proposal_details
-                edge_str = f"{pot_str(edge_details['edge'][0])} -> {pot_str(edge_details['edge'][1])}"
-                action_str = edge_details['action'].capitalize()
-                print(f"[Rejected Edge]: {action_str} {edge_str} | New Score: {prop_score:.3f}")
-
-
-        all_scores_trace.append(curr_score)
-        
-        # Sample collection
-        if it >= burn_in and ((it - burn_in) % thin == 0):
-            kept_A.append(edges_from_A(current.A)) # Store the set of active edges
-            kept_scores.append(curr_score)
-            kept_edge_density.append(sum(v for v in current.A.values()))
-
-
-        if progress and isinstance(iterator, tqdm): # Check if tqdm object
-            iterator.set_postfix({
-                "logpost": f"{curr_score:.3f}",
-                "best": f"{best_score:.3f}",
-                "acc": f"{(accepts/max(1,tried)):.2f}",
-                "E": f"{len(current.A)}" # Number of edges
-            }, refresh=True)
-
-    # Close progress bar if used
-    if progress and isinstance(iterator, tqdm):
-        iterator.close()
-
-
-    # Final Stats
-    # Edge inclusion probability calculation
-    edge_counts: Dict[Tuple[FrozenSet[str], FrozenSet[str]], int] = defaultdict(int)
-    for A_sample in kept_A:
-        for edge in A_sample:
-            # Only count admissible edges relevant to the fixed Z
-            if edge[0] in Z_fixed and edge[1] in Z_fixed and edge in all_admissible_pairs:
-                 edge_counts[edge] += 1
-    total_kept = max(1, len(kept_A))
-    # Calculate inclusion only over the set of admissible edges for this Z
-    edge_inclusion = {edge: edge_counts.get(edge, 0) / total_kept for edge in all_admissible_pairs}
-
-
-    stats = {
-        "samples_A": kept_A, # List of edge sets
-        "scores": kept_scores,
-        "all_scores_trace": all_scores_trace,
-        "edge_density": kept_edge_density,
-        "accept_rate": (accepts / max(1, tried)),
-        "edge_inclusion": edge_inclusion,
-        "seed": seed
-    }
-    # Ensure best_struct is returned
-
-    return best_struct, best_score, stats
-
-
-# --- Function 5: Worker for A-only MCMC (Calls Function 4) ---
-def _mcmc_worker_A_collapsed(args: tuple):
-    """ Worker function for A-only MCMC using collapsed data. """
-    (S, collapsed_data, priors, unit_drop_edges, fixed_k,
-     steps, burn_in, thin, seed, progress, # 'progress' is usually False
-     Z_fixed) = args # Z_fixed is passed
-
-    # Call the single-chain function for A-only search
-    return mcmc_map_search_only_A_collapsed(
-        S=S, collapsed_data=collapsed_data, priors=priors, Z_fixed=Z_fixed,
-        unit_drop_edges=unit_drop_edges, fixed_k=fixed_k, steps=steps,
-        burn_in=burn_in, thin=thin, seed=seed, progress=progress # Pass worker's progress flag
-    )
-
-
-# --- Function 6: Parallel Runner for A-only MCMC (Calls Function 5 via submit) ---
-def run_mcmc_only_A_parallel_collapsed(
-    S: List[str],
-    collapsed_data: pd.DataFrame, # <-- Takes DataFrame
-    priors: Priors,
-    *,
-    unit_drop_edges: bool = True,
-    fixed_k: Optional[int] = None, # Needed for prior
-    steps: int = 600,
-    burn_in: int = 150,
-    thin: int = 10,
-    base_seed: int = 456, # Different default seed
-    n_chains: int = 4,
-    Z: Set[FrozenSet[str]] # <-- Requires the fixed Z set
-):
-    """ Runs multiple A-only MCMC chains in parallel using collapsed data. """
-    # --- Structure follows run_mcmc_only_Z_parallel_collapsed ---
-    if n_chains <= 0:
-        n_chains = max(1, os.cpu_count() - 1)
-
-    seeds = [base_seed + i for i in range(n_chains)]
-
-    # Package arguments for the worker _mcmc_worker_A_collapsed
-    tasks = []
-    for seed in seeds:
-        tasks.append((
-            S, collapsed_data, priors, unit_drop_edges, fixed_k,
-            steps, burn_in, thin, seed, True, # Progress=False for workers
-            Z # Pass the fixed Z set here
-        ))
-
-    best_struct = None
-    best_score = float("-inf")
-    all_stats = []
-
-    print(f"[Info] Starting {n_chains} parallel MCMC chains (A-only search)...")
-
-    with ProcessPoolExecutor(max_workers=min(n_chains, os.cpu_count() - 1)) as executor:
-        # Submit the COLLAPSED A-worker function
-        futures = {executor.submit(_mcmc_worker_A_collapsed, t) for t in tasks}
-
-        # Use tqdm for the main process progress bar
-        for future in as_completed(futures): # Iterate directly
-            # chain_index = futures[future]
-            try:
-                # Unpack results
-                struct, score, stats = future.result()
-                all_stats.append(stats)
-                # Track best
                 if score > best_score:
                     best_score = score
                     best_struct = struct
@@ -4718,7 +3333,6 @@ def lns_destroy_repair(current: "Structure",
         bestZ.add(chosenP)
 
     return best_st
-
 
 def read_leaf_type_map_tls(path: str) -> Dict[str, str]:
     """
@@ -5023,7 +3637,7 @@ def _build_ZA_from_txt(adj: dict, comp_map: dict, unit_drop_edges: bool):
                 A[(Pu, Qv)] = 1
     return Z_active, A, sorted(base_types), potency_id_to_set
 
-def score_given_map_and_trees(txt_path: str, trees, meta_paths, all_B_sets, fixed_k,
+def score_given_map_and_trees(txt_path: str, trees, meta_paths, fixed_k,
                               unit_drop_edges = False):
     """
     Parses the input file and builds the structure F=(Z,A),
@@ -5084,11 +3698,10 @@ def score_given_map_and_trees(txt_path: str, trees, meta_paths, all_B_sets, fixe
     struct = Structure(S=S_all, Z_active=Z_active, A=A, unit_drop=unit_drop_edges)
     dummy_priors = Priors(potency_mode="fixed_k", fixed_k = fixed_k, rho=0.2)
 
-    _, per_tree_logs = score_structure(
+    log_post, per_tree_logs = score_structure(
         struct=struct,
         trees=trees,
         leaf_type_maps=leaf_type_maps,
-        all_B_sets=all_B_sets,
         priors=dummy_priors,
         prune_eps=0.0
     )
@@ -5159,25 +3772,13 @@ def read_trees_and_maps(tree_paths: List[str], meta_paths: List[str]):
             raise FileNotFoundError(p)
 
     trees = [read_newick_file(p) for p in tree_paths]
-    raw_maps = [read_leaf_type_map(p) for p in meta_paths]
-    # raw_maps = [read_leaf_type_map_tls(p) for p in meta_paths]
+    # raw_maps = [read_leaf_type_map(p) for p in meta_paths]
+    raw_maps = [read_leaf_type_map_tls(p) for p in meta_paths]
 
     leaf_type_maps = [filter_leaf_map_to_tree(root, m) for root, m in zip(trees, raw_maps)]
 
-    # --- MODIFICATION START ---
-
-    # Build the set of all unique type strings
-    all_types = {str(t) for m in leaf_type_maps for t in m.values()}
-    
-    # Discard the empty string '' if it exists in the set
-    all_types.discard('') 
-    
-    # Note: If 'None' is also considered "empty", you can add:
-    # all_types.discard('None')
-
-    # Build the final sorted list S from the filtered set
-    S = sorted(all_types)
-
+    # Build type universe S from whatever is actually present
+    S = sorted({str(t) for m in leaf_type_maps for t in m.values()})
     return trees, leaf_type_maps, S
 
 
@@ -5346,210 +3947,66 @@ def plot_mcmc_traces(
     plt.close(fig)
     print(f"📈 Plot saved to {output_path}")
 
+def plot_pareto_elbow(
+    results_list: List[Dict],
+    title: str,
+    output_path: str
+):
+    """
+    Plots the NLL vs. k (number of potencies) to help visually 
+    identify the "elbow" k.
 
-# def process_case(map_idx: int, type_num: int, cells_n: int,
-#                  priors, iters=100, restarts=5, log_dir: Optional[str]=None,
-#                  tree_kind: str = "graph", n_jobs: Optional[int] = None):
-#     # Resolve and validate all inputs (will print what it tries)
-#     fate_map_path, idx4 = build_fate_map_path(map_idx, type_num, tree_kind=tree_kind)
-#     tree_paths, meta_paths = build_tree_and_meta_paths(map_idx, type_num, cells_n, tree_kind=tree_kind)
+    Args:
+        results_list: List of results dictionaries from the k_sweep.
+        title: The title for the plot.
+        output_path: The file path to save the plot image.
+    """
+    if not results_list:
+        print("Warning: Cannot plot elbow, results list is empty.")
+        return
 
-#     # load trees + maps
-#     trees, leaf_type_maps, S = read_trees_and_maps(tree_paths, meta_paths)
-
-#     all_B_sets = [compute_B_sets(tree, ltm) for tree, ltm in zip(trees, leaf_type_maps)]
-
-#     ground_truth_sets, gt_loss, gt_Z_active, gt_edges= score_given_map_and_trees(
-#         fate_map_path, trees, meta_paths, all_B_sets, fixed_k=priors.fixed_k
-#     )
-
-#     # run MAP search
-#     # a compact candidate pool keeps things fast & well-mixed
-#     print_fitch_potency_probs_once(
-#         S, trees, leaf_type_maps,
-#         header=f"\n[Potency ranking] type_{type_num}, map {idx4}, cells_{cells_n}"
-#     )
-
-#     pool = collect_fitch_multis(S, trees, leaf_type_maps)
-
-#     # <<<--- CHANGE: Compute Fitch probabilities and convert to a dictionary --->>>
-#     fitch_probs_list = compute_fitch_potency_probs(S, trees, leaf_type_maps)
-#     fitch_probs_dict = {p: prob for p, prob in fitch_probs_list}
-
-#     # NEW CALL
-#     # The 'restarts' parameter now controls the number of parallel chains
-#     bestF_Z, best_score_Z, all_stats_Z = run_mcmc_only_Z_parallel(
-#         S=S,
-#         trees=trees,
-#         leaf_type_maps=leaf_type_maps,
-#         all_B_sets=all_B_sets,  # <--- PASS IT HERE
-#         priors=priors,
-#         unit_drop_edges=False,
-#         fixed_k=priors.fixed_k if priors.potency_mode == "fixed_k" else None,
-#         steps=iters,
-#         burn_in=(iters*15)//100,
-#         thin=10,
-#         base_seed=123,
-#         candidate_pool=pool,
-#         block_swap_sizes=(1, 2, 3),
-#         n_chains= min(os.cpu_count() - 1, restarts),  # Use the 'restarts' argument to set the number of chains
-#         fitch_probs = fitch_probs_dict
-#     )
-
-#     # --- START: ADDED CODE BLOCK ---
-#     # Score the ground truth Z using the same Z-only scoring function for a fair comparison
-#     # print("\n--- Scoring Ground Truth Z (Z-only search context) ---")
-#     gt_logp_Z = priors.log_prior_Z(S, gt_Z_active)
-#     if not math.isfinite(gt_logp_Z):
-#         print("Ground Truth Z has -inf prior under the current model. Cannot score.")
-#     else:
-#         # Create a structure with GT potencies and a fully connected graph
-#         A_full_gt = _full_edges_for_Z(gt_Z_active, unit_drop_edges=False)
-#         gt_struct_for_Z_score = Structure(S, gt_Z_active, A_full_gt, unit_drop=False)
+    # Sort results by k value
+    valid_results = [r for r in results_list if math.isfinite(r['log_likelihood'])]
+    if not valid_results:
+        print("Warning: No valid (finite) results to plot for elbow.")
+        return
         
-#         # IMPORTANT: Mimic the Z-only MCMC by using the SubsetReach object
-#         gt_struct_for_Z_score.Reach = SubsetReach()
-        
-#         # Score using the no-edge-prior function
-#         gt_score_Z_only, _ = score_structure_no_edge_prior(
-#             gt_struct_for_Z_score, trees, leaf_type_maps, all_B_sets, priors, 
-#             precomputed_logp_Z=gt_logp_Z
-#         )
-#         print(f"Score of Ground Truth Z (fully connected A): {gt_score_Z_only:.6f}")
-#         print("----------------------------------------------------")
-#     # --- END: ADDED CODE BLOCK ---
+    # --- CHANGE: Sort by k, not k_model ---
+    valid_results.sort(key=lambda x: x['k'])
 
-#     if all_stats_Z and log_dir:
-#         plot_mcmc_traces(
-#             all_stats=all_stats_Z,
-#             # burn_in=(iters * 15) // 100,
-#             # thin=10,
-#             title=f"MCMC Trace for Potency Sets (Z) - Map {idx4}, Cells {cells_n}",
-#             output_path=os.path.join(log_dir, f"trace_Z_type{type_num}_{idx4}_cells{cells_n}.png")
-#         )
+    # Extract data for plotting
+    k_values = [r['k'] for r in valid_results]
+    k_models = [r['k_model'] for r in valid_results] # We'll use this for annotation
+    nll_values = [-r['log_likelihood'] for r in valid_results]
 
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # --- CHANGE: Plot NLL vs. k_values ---
+    ax.plot(k_values, nll_values, marker='o', linestyle='-', label='Negative Log-Likelihood (NLL)')
 
-#     # Z_active = {
-#     #     frozenset(['-11', '-12']),
-#     #     frozenset(['-13', '-14']),
-#     #     frozenset(['-2', '-7']),
-#     #     frozenset(['-11', '-12', '-16']),
-#     #     frozenset(['-13', '-14', '-16']),
-#     #     frozenset(['-11', '-2', '-5', '-7']),
-#     #     frozenset(['-11', '-2', '-4', '-5', '-7']),
-#     #     frozenset(['-10', '-11', '-12', '-13', '-14', '-16']),
-#     #     frozenset(['-10', '-11', '-12', '-13', '-14', '-16', '-2', '-4', '-5', '-7']),
-#     #     frozenset(['-10']),
-#     #     frozenset(['-11']),
-#     #     frozenset(['-12']),
-#     #     frozenset(['-13']),
-#     #     frozenset(['-14']),
-#     #     frozenset(['-16']),
-#     #     frozenset(['-2']),
-#     #     frozenset(['-4']),
-#     #     frozenset(['-5']),
-#     #     frozenset(['-7'])
-#     # }
+    # Annotate each point with its resulting 'K_model' (total complexity)
+    for i, k_val in enumerate(k_values):
+        k_mod = k_models[i]
+        # --- CHANGE: Plot on (k_val, nll_val) and annotate with k_model ---
+        ax.annotate(f"K_model={k_mod}", (k_values[i], nll_values[i]),
+                    textcoords="offset points", xytext=(0, 10), ha='center',
+                    fontsize=9, color='gray')
 
-#     # iters = iters + 90
+    # --- CHANGE: Update title and X-axis label ---
+    ax.set_title(title.replace("Pareto", "NLL"), fontsize=16)
+    ax.set_xlabel("Number of Potencies (k)", fontsize=12)
+    ax.set_ylabel("Model Error (Negative Log-Likelihood)", fontsize=12)
+    ax.legend()
+    ax.grid(True, linestyle='--', alpha=0.6)
+    
+    # Set x-axis to show integer k values
+    ax.xaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True))
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.close(fig)
+    print(f"📈 NLL vs. k elbow plot saved to {output_path}")
 
-#     bestF, best_score, all_chain_stats = run_mcmc_only_A_parallel(
-#         S=S,
-#         trees=trees,
-#         leaf_type_maps=leaf_type_maps,
-#         all_B_sets=all_B_sets,  # <--- AND PASS IT HERE
-#         priors=priors,
-#         unit_drop_edges=False,
-#         fixed_k=priors.fixed_k if priors.potency_mode == "fixed_k" else None,
-#         steps=iters,
-#         burn_in=(iters*15)//100,
-#         thin=10,
-#         base_seed=123,
-#         candidate_pool=pool,
-#         block_swap_sizes=(1, 2, 3),
-#         n_chains= min(os.cpu_count() - 1, restarts),  # Use the 'restarts' argument to set the number of chains
-#         Z = bestF_Z.Z_active
-#         # Z = Z_active
-#     )
-
-#     if all_chain_stats and log_dir:
-#         plot_mcmc_traces(
-#             all_stats=all_chain_stats,
-#             # burn_in=(iters * 15) // 100,
-#             # thin=10,
-#             title=f"MCMC Trace for Edges (A) - Map {idx4}, Cells {cells_n}",
-#             output_path=os.path.join(log_dir, f"trace_A_type{type_num}_{idx4}_cells{cells_n}.png")
-#         )
-
-#     # For compatibility with your existing result processing,
-#     # you can get the stats of the best chain if needed,
-#     # or analyze all_chain_stats for convergence.
-#     # For now, let's just get the acceptance rate from the first chain as an example.
-#     stats = all_chain_stats[0] if all_chain_stats else {}
-
-#     print("MCMC accept rate:", stats["accept_rate"])
-#     # posterior inclusion frequency of each candidate potency:
-#     incl = stats["inclusion"]
-
-#     print(f"\n=== BEST MAP for type_{type_num}, map {idx4}, cells_{cells_n} ===")
-#     multi_sorted = sorted([P for P in bestF.Z_active if len(P) >= 2],
-#                           key=lambda x: (len(x), tuple(sorted(list(x)))))
-#     print("Active potencies (multi-type):")
-#     for P in multi_sorted: print("  ", pot_str(P))
-#     print("Singletons (always active):")
-#     for t in S: print("  ", "{" + t + "}")
-
-#     print("\nEdges:")
-#     edges = sorted([e for e, v in bestF.A.items() if v == 1],
-#                    key=lambda e: (len(e[0]), len(e[1]), tuple(sorted(list(e[0]))), tuple(sorted(list(e[1])))))
-#     for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
-
-#     print("\nScores:")
-#     print(f"  log posterior: {best_score:.6f}")
-#     # for i, lg in enumerate(per_tree_logs, 1):
-#     #     print(f"  Tree {i} log P(T|F*): {lg:.6f}")
-
-#     # --- Ground truth scoring ---
-#     predicted_sets = {p for p in bestF.Z_active if len(p) > 1}
-
-#     pretty_print_sets("Predicted Sets", predicted_sets)
-#     pretty_print_sets("Ground Truth Sets", ground_truth_sets)
-
-#     print("\n=== Ground Truth Directed Edges ===")
-#     for (u, v) in sorted(gt_edges, key=lambda e: (len(e[0]), tuple(sorted(e[0])), len(e[1]), tuple(sorted(e[1])))):
-#         print(f"{sorted(list(u))} -> {sorted(list(v))}")
-
-#     jd = jaccard_distance(predicted_sets, ground_truth_sets)
-#     print("\n=== Jaccard Distance ===")
-#     print(f"Jaccard Distance (Pred vs GT): {jd:.6f}")
-#     print(f"Predicted map's loss: {best_score:.6f}")
-#     print(f"Ground truth's loss: {gt_loss:.6f}")
-
-#     # --- EDGE METRICS (Predicted vs Ground Truth) ---
-#     pred_edges = edges_from_A(bestF.A)
-#     edge_jacc = jaccard_distance_edges(pred_edges, gt_edges)
-
-#     nodes_union = gt_Z_active | set(bestF.Z_active)
-#     im_d, im_s = ipsen_mikhailov_similarity(
-#         nodes_union = nodes_union,
-#         edges1 = pred_edges,
-#         edges2 = gt_edges,
-#         gamma = 0.08,
-#     )
-
-#     print("\n=== Edge-set Metrics ===")
-#     print(f"Jaccard distance (edges): {edge_jacc:.6f}")
-#     print(f"Ipsen–Mikhailov distance: {im_d:.6f}")
-#     print(f"Ipsen–Mikhailov similarity: {im_s:.6f}")
-
-#     # optional logs
-#     # if log_dir:
-#     #     os.makedirs(log_dir, exist_ok=True)
-#     #     log_path = os.path.join(log_dir, f"log_type{type_num}_{idx4}_cells{cells_n}.txt")
-#     #     with open(log_path, "w") as f:
-#     #         f.write(f"type_{type_num}, map {idx4}, cells_{cells_n}\n")
-#     #         f.write(f"Jaccard={jd:.6f}, GT loss={gt_loss:.6f}, Pred loss={best_score:.6f}\n")
-#     return jd, gt_loss, best_score,edge_jacc,im_s
 
 def process_case( # This function REPLACES your old `process_case`
     map_idx: int, 
@@ -5583,7 +4040,7 @@ def process_case( # This function REPLACES your old `process_case`
 
     # --- Ground Truth Scoring (Unchanged) ---
     ground_truth_sets, gt_loss, gt_Z_active, gt_edges = score_given_map_and_trees(
-        fate_map_path, trees, meta_paths, all_B_sets, 
+        fate_map_path, trees, meta_paths,
         fixed_k=priors.fixed_k,
         unit_drop_edges=unit_drop_edges
     )
@@ -5604,7 +4061,7 @@ def process_case( # This function REPLACES your old `process_case`
         S=S,
         trees=trees,
         leaf_type_maps=leaf_type_maps,
-        all_B_sets=all_B_sets,
+        # all_B_sets=all_B_sets,
         priors=priors,
         unit_drop_edges=unit_drop_edges, # Pass this along
         fixed_k=priors.fixed_k if priors.potency_mode == "fixed_k" else None,
@@ -5661,34 +4118,37 @@ def process_case( # This function REPLACES your old `process_case`
     bestF_final = Structure(S, Z_map, A_map_final, unit_drop_edges)
     
     # Score this final structure
-    final_logp_Z = priors.log_prior_Z(S, Z_map)
-    final_num_admiss = len(A_full) # Num admissible edges for this Z
-    final_logp_A = priors.log_prior_A(
-        Z_map, A_map_final, unit_drop_edges, final_num_admiss
-    )
-    final_log_L = get_log_likelihood(
-        bestF_final, trees, leaf_type_maps, all_B_sets
-    )
+    # final_logp_Z = priors.log_prior_Z(S, Z_map)
+    # final_num_admiss = len(A_full) # Num admissible edges for this Z
+    # final_logp_A = priors.log_prior_A(
+    #     Z_map, A_map_final, unit_drop_edges, final_num_admiss
+    # )
+
+    # final_log_L = get_log_likelihood(
+    #     bestF_final, trees, leaf_type_maps, all_B_sets
+    # )
     
-    if not math.isfinite(final_logp_Z): final_logp_Z = 0 # Handle -inf prior
-    if not math.isfinite(final_logp_A): final_logp_A = 0 # Handle -inf prior
+    # if not math.isfinite(final_logp_Z): final_logp_Z = 0 # Handle -inf prior
+    # if not math.isfinite(final_logp_A): final_logp_A = 0 # Handle -inf prior
     
-    best_score_final = final_logp_Z + final_logp_A + final_log_L
+    # best_score_final = final_logp_Z + final_logp_A + final_log_L
+
+    best_score_final, _ = score_structure(bestF_final, trees, leaf_type_maps, priors)
+
+    # print(f"Final Log P(Z): {final_logp_Z:.4f}")
+    # print(f"Final Log P(A|Z): {final_logp_A:.4f} ({len(A_map_final)} edges)")
+    print(f"Final score (with edges): {best_score_final:.4f}")
     
-    print(f"Final Log P(Z): {final_logp_Z:.4f}")
-    print(f"Final Log P(A|Z): {final_logp_A:.4f} ({len(A_map_final)} edges)")
-    print(f"Final Log L(Data|F): {final_log_L:.4f}")
+    # print(f"\n=== BEST MAP (Hybrid) for type_{type_num}, map {idx4}, cells_{cells_n} ===")
+    # multi_sorted = sorted([P for P in bestF_final.Z_active if len(P) >= 2],
+    #                       key=lambda x: (len(x), tuple(sorted(list(x)))))
+    # print("Active potencies (multi-type):")
+    # for P in multi_sorted: print("  ", pot_str(P))
     
-    print(f"\n=== BEST MAP (Hybrid) for type_{type_num}, map {idx4}, cells_{cells_n} ===")
-    multi_sorted = sorted([P for P in bestF_final.Z_active if len(P) >= 2],
-                          key=lambda x: (len(x), tuple(sorted(list(x)))))
-    print("Active potencies (multi-type):")
-    for P in multi_sorted: print("  ", pot_str(P))
-    
-    print("\nEdges:")
-    edges = sorted([e for e, v in bestF_final.A.items() if v == 1],
-                   key=lambda e: (len(e[0]), tuple(sorted(list(e[0]))), pot_str(e[1])))
-    for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
+    # print("\nEdges:")
+    # edges = sorted([e for e, v in bestF_final.A.items() if v == 1],
+    #                key=lambda e: (len(e[0]), tuple(sorted(list(e[0]))), pot_str(e[1])))
+    # for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
 
     print("\nScores:")
     print(f"  Log Posterior (Pred): {best_score_final:.6f}")
@@ -5698,6 +4158,12 @@ def process_case( # This function REPLACES your old `process_case`
     predicted_sets = {p for p in bestF_final.Z_active if len(p) > 1}
     pretty_print_sets("Predicted Sets", predicted_sets)
     pretty_print_sets("Ground Truth Sets", ground_truth_sets)
+    print("\nPredicted edges")
+    edges = sorted([e for e, v in bestF_final.A.items() if v == 1],
+                   key=lambda e: (len(e[0]), tuple(sorted(list(e[0]))), pot_str(e[1])))
+    for (u, v) in sorted(edges, key=lambda e: (len(e[0]), tuple(sorted(e[0])), len(e[1]), tuple(sorted(e[1])))):
+        print(f"{sorted(list(u))} -> {sorted(list(v))}")
+    # for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
     print("\n=== Ground Truth Directed Edges ===")
     for (u, v) in sorted(gt_edges, key=lambda e: (len(e[0]), tuple(sorted(e[0])), len(e[1]), tuple(sorted(e[1])))):
         print(f"{sorted(list(u))} -> {sorted(list(v))}")
@@ -5722,284 +4188,6 @@ def process_case( # This function REPLACES your old `process_case`
     print(f"Ipsen–Mikhailov similarity: {im_s:.6f}")
 
     return jd, gt_loss, best_score_final, edge_jacc, im_s
-
-def process_case_clever_mwg(
-    map_idx: int, 
-    type_num: int, 
-    cells_n: int,
-    priors: "Priors", 
-    iters: int, 
-    n_chains: int,
-    log_dir: Optional[str] = None,
-    tree_kind: str = "graph",
-    unit_drop_edges: bool = False, # Set default to False, as in your original
-    a_steps: int = 5,
-    z_steps: int = 1
-):
-    """
-    Processes a single simulation case using the "Clever MwG" sampler.
-    This replaces your original 'process_case' function.
-    """
-    
-    # --- 1. Load Data and Ground Truth ---
-    print(f"\n{'='*80}")
-    print(f"=== Processing Case: type_{type_num}, map {map_idx:04d}, cells_{cells_n} ===")
-    print(f"=== Sampler: Clever Metropolis-within-Gibbs (Joint Z+A) ===")
-    print(f"=== k={priors.fixed_k}, iters={iters}, chains={n_chains}, A-steps={a_steps}, Z-steps={z_steps} ===")
-    print(f"{'='*80}")
-
-    fate_map_path, idx4 = build_fate_map_path(map_idx, type_num, tree_kind=tree_kind)
-    tree_paths, meta_paths = build_tree_and_meta_paths(map_idx, type_num, cells_n, tree_kind=tree_kind)
-
-    trees, leaf_type_maps, S = read_trees_and_maps(tree_paths, meta_paths)
-    all_B_sets = [compute_B_sets(tree, ltm) for tree, ltm in zip(trees, leaf_type_maps)]
-
-    ground_truth_sets, gt_loss, gt_Z_active, gt_edges = score_given_map_and_trees(
-        fate_map_path, trees, meta_paths, all_B_sets, 
-        fixed_k=priors.fixed_k,
-        unit_drop_edges=unit_drop_edges
-    )
-    
-    # --- 2. Prepare for MCMC ---
-    print_fitch_potency_probs_once(
-        S, trees, leaf_type_maps,
-        header=f"\n[Potency ranking] type_{type_num}, map {idx4}, cells_{cells_n}"
-    )
-    pool = collect_fitch_multis(S, trees, leaf_type_maps)
-    fitch_probs_list = compute_fitch_potency_probs(S, trees, leaf_type_maps)
-    fitch_probs_dict = {p: prob for p, prob in fitch_probs_list}
-    if not fitch_probs_dict: fitch_probs_dict = {}
-
-    
-    # --- 3. Run MCMC (Single Phase, Joint Sampler) ---
-    
-    bestF, best_score, all_stats = run_mcmc_clever_mwg_parallel(
-        S=S,
-        trees=trees,
-        leaf_type_maps=leaf_type_maps,
-        all_B_sets=all_B_sets,
-        priors=priors,
-        unit_drop_edges=unit_drop_edges,
-        fixed_k=priors.fixed_k if priors.potency_mode == "fixed_k" else None,
-        steps=iters,
-        burn_in=(iters * 20) // 100,  # 20% burn-in
-        thin=10,
-        n_chains=n_chains,
-        base_seed=123 + map_idx + cells_n, # Vary seed per case
-        candidate_pool=pool,
-        fitch_probs=fitch_probs_dict,
-        a_step_inner_loops=a_steps,
-        z_step_inner_loops=z_steps
-    )
-
-    if bestF is None:
-        print("[ERROR] MCMC failed to find a valid structure for this case.")
-        raise RuntimeError("MCMC failed")
-
-    # --- 4. Plot Traces ---
-    if all_stats and log_dir:
-        plot_mcmc_traces(
-            all_stats=all_stats,
-            title=f"MCMC Trace (Clever MwG) - Map {idx4}, Cells {cells_n}, k={priors.fixed_k}",
-            output_path=os.path.join(log_dir, f"trace_clever_type{type_num}_{idx4}_cells{cells_n}_k{priors.fixed_k}.png")
-        )
-        check_convergence(all_stats)
-
-    # --- 5. Report Results & Metrics ---
-    stats = all_stats[0] if all_stats else {}
-    print("MCMC accept rates:", {
-        "A_step": stats.get("accept_rate_A", "N/A"), 
-        "Z_step": stats.get("accept_rate_Z", "N/A")
-    })
-
-    print(f"\n=== BEST MAP for type_{type_num}, map {idx4}, cells_{cells_n} ===")
-    multi_sorted = sorted([P for P in bestF.Z_active if len(P) >= 2],
-                          key=lambda x: (len(x), tuple(sorted(list(x)))))
-    print("Active potencies (multi-type):")
-    for P in multi_sorted: print("  ", pot_str(P))
-    
-    print("\nEdges:")
-    edges = sorted([e for e, v in bestF.A.items() if v == 1],
-                   key=lambda e: (len(e[0]), len(e[1]), tuple(sorted(list(e[0]))), tuple(sorted(list(e[1])))))
-    for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
-
-    print("\nScores:")
-    print(f"  Log Posterior (Pred): {best_score:.6f}")
-    print(f"  Log Posterior (GT):   {gt_loss:.6f}") # From score_given_map_and_trees
-
-    # --- Potency Set Metrics ---
-    predicted_sets = {p for p in bestF.Z_active if len(p) > 1}
-    pretty_print_sets("Predicted Sets", predicted_sets)
-    pretty_print_sets("Ground Truth Sets", ground_truth_sets)
-    jd = jaccard_distance(predicted_sets, ground_truth_sets)
-    print(f"Jaccard Distance (Potency Sets): {jd:.6f}")
-
-    # --- Edge Set Metrics ---
-    pred_edges = edges_from_A(bestF.A)
-    edge_jacc = jaccard_distance_edges(pred_edges, gt_edges)
-    
-    nodes_union = gt_Z_active | set(bestF.Z_active)
-    im_d, im_s = ipsen_mikhailov_similarity(
-        nodes_union = nodes_union,
-        edges1 = pred_edges,
-        edges2 = gt_edges,
-        gamma = 0.08,
-    )
-
-    print("\n=== Edge-set Metrics ===")
-    print(f"Jaccard distance (edges): {edge_jacc:.6f}")
-    print(f"Ipsen–Mikhailov distance: {im_d:.6f}")
-    print(f"Ipsen–Mikhailov similarity: {im_s:.6f}")
-
-    return jd, gt_loss, best_score, edge_jacc, im_s
-
-
-
-def main_larry_collapsed(
-    collapsed_mat_path: str, # Path to your collapsed_clone_type_mat.csv
-    iters: int = 500,
-    restarts: int = 4,
-    fixed_k: int = 10,
-    out_csv: str = "larry_collapsed_results.csv",
-    log_dir: Optional[str] = "larry_collapsed_logs",
-    unit_drop_edges: bool = False # Set based on your model assumption
-):
-    """ Main function to run MCMC analysis on collapsed LARRY data. """
-    random.seed(42) # Base seed for consistency
-    priors = Priors(potency_mode="fixed_k", fixed_k=fixed_k, rho=0.2)
-
-    try:
-        # 1. Load collapsed matrix
-        print(f"Loading collapsed potency matrix from: {collapsed_mat_path}")
-        try:
-            collapsed_data = pd.read_csv(collapsed_mat_path, index_col=0)
-        except FileNotFoundError:
-             print(f"Error: Input file not found at {collapsed_mat_path}", file=sys.stderr)
-             return
-        except Exception as e:
-             print(f"Error reading CSV: {e}", file=sys.stderr)
-             return
-
-        # 2. Clean data
-        if 'Undifferentiated' in collapsed_data.columns:
-            print("Ignoring 'Undifferentiated' column.")
-            collapsed_data = collapsed_data.drop(columns=['Undifferentiated'])
-        if 'counts' not in collapsed_data.columns:
-            raise ValueError("'counts' column missing")
-        collapsed_data['counts'] = pd.to_numeric(collapsed_data['counts'], errors='coerce').fillna(0)
-        collapsed_data['counts'] = collapsed_data['counts'].astype(int)
-        collapsed_data = collapsed_data[collapsed_data['counts'] > 0]
-        if collapsed_data.empty: raise ValueError("No valid data rows after cleaning.")
-
-        # 3. Determine S
-        S = sorted([col for col in collapsed_data.columns if col != 'counts'])
-        if not S: raise ValueError("No cell type columns found.")
-        print(f"Detected Type Universe S: {S}")
-
-        # 4. Generate candidate pool from observed potencies + root
-        pool = set()
-        for idx, row in collapsed_data.iterrows():
-             cell_types_present = {col for col in S if row[col] == 1}
-             potency_set = frozenset(cell_types_present)
-             if len(potency_set) >= 2: pool.add(potency_set)
-        pool.add(frozenset(S)) # Ensure root is included
-        candidate_pool = sorted(list(pool), key=lambda x: (len(x), tuple(sorted(list(x)))))
-        print(f"Generated candidate pool of size {len(candidate_pool)} from input matrix.")
-
-        # (Optional: Calculate Fitch probabilities - skipped for simplicity now)
-        fitch_probs_dict = None
-
-        # 5. MCMC Phase 1: Search for Best Z
-        print("\n--- Starting MCMC Phase 1: Searching for Potency Sets (Z) ---")
-        bestF_Z, best_score_Z, all_stats_Z = run_mcmc_only_Z_parallel_collapsed(
-            S=S,
-            collapsed_data=collapsed_data,
-            priors=priors,
-            unit_drop_edges=unit_drop_edges, # Use appropriate setting
-            fixed_k=fixed_k,
-            steps=iters,
-            burn_in=(iters * 15) // 100,
-            thin=10,
-            base_seed=123,
-            candidate_pool=candidate_pool,
-            block_swap_sizes=(1,), # Swap 1 at a time
-            n_chains=restarts,
-            fitch_probs=fitch_probs_dict
-        )
-
-        if bestF_Z is None:
-            print("[ERROR] MCMC Phase 1 (Z search) failed to find a valid structure.", file=sys.stderr)
-            return
-
-        print(f"--- MCMC Phase 1 Complete. Best Z score: {best_score_Z:.4f} ---")
-        if all_stats_Z: check_convergence(all_stats_Z) # Check convergence
-
-        # 6. MCMC Phase 2: Search for Best A given Best Z
-        print("\n--- Starting MCMC Phase 2: Searching for Edges (A) given best Z ---")
-        iters_A = iters # Slightly more iterations for A
-
-        bestF_A, best_score_A, all_stats_A = run_mcmc_only_A_parallel_collapsed(
-            S=S,
-            collapsed_data=collapsed_data,
-            priors=priors,
-            unit_drop_edges=unit_drop_edges, # Use same setting
-            fixed_k=fixed_k, # Pass k for prior calc
-            steps=iters_A,
-            burn_in=(iters_A * 15) // 100,
-            thin=10,
-            base_seed=456, # Different seed for A search
-            n_chains=restarts,
-            Z=bestF_Z.Z_active # Pass the best Z found
-        )
-
-        if bestF_A is None:
-            print("[WARNING] MCMC Phase 2 (A search) failed. Using Z-search result structure.", file=sys.stderr)
-            bestF = bestF_Z
-            best_score = best_score_Z # Score corresponds to Z-only objective
-        else:
-            print(f"--- MCMC Phase 2 Complete. Best (Z,A) score: {best_score_A:.4f} ---")
-            if all_stats_A: check_convergence(all_stats_A) # Check convergence
-            bestF = bestF_A
-            best_score = best_score_A # Score corresponds to Z+A objective
-
-        # 7. Output Results
-        if log_dir:
-            os.makedirs(log_dir, exist_ok=True)
-            if all_stats_Z:
-                 plot_mcmc_traces(all_stats=all_stats_Z, title=f"MCMC Trace (Z search) - k={fixed_k}",
-                                  output_path=os.path.join(log_dir, f"trace_Z_k{fixed_k}.png"))
-            if all_stats_A:
-                 plot_mcmc_traces(all_stats=all_stats_A, title=f"MCMC Trace (A search) - k={fixed_k}",
-                                  output_path=os.path.join(log_dir, f"trace_A_k{fixed_k}.png"))
-
-        print("\n=== FINAL BEST MAP STRUCTURE ===")
-        multi_sorted = sorted([P for P in bestF.Z_active if len(P) >= 2],
-                              key=lambda x: (len(x), tuple(sorted(list(x)))))
-        print("Active potencies (multi-type):")
-        for P in multi_sorted: print("  ", pot_str(P))
-        print("\nSingletons (always active):")
-        for t in S: print("  ", "{" + t + "}")
-
-        print("\nEdges:")
-        edges = sorted([e for e, v in bestF.A.items() if v == 1],
-                       key=lambda e: (len(e[0]), len(e[1]), tuple(sorted(list(e[0]))), tuple(sorted(list(e[1])))))
-        for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
-
-        print(f"\nFinal Log Posterior Score: {best_score:.6f}")
-
-        # --- Save summary ---
-        with open(out_csv, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["InputFile", "FixedK", "BestLogPosterior", "NumMultiPotencies", "NumEdges"])
-            writer.writerow([
-                os.path.basename(collapsed_mat_path), fixed_k, f"{best_score:.6f}",
-                len(multi_sorted), len(edges)
-            ])
-        print(f"\nResults summary saved to {out_csv}")
-
-    except Exception as e:
-        print(f"[ERROR] An unexpected error occurred in main_larry_collapsed:", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
 
 def main_tls(
     input_file_list: str, # Path to the file listing tree/meta pairs
@@ -6041,7 +4229,7 @@ def main_tls(
             S=S,
             trees=trees,
             leaf_type_maps=leaf_type_maps,
-            all_B_sets=all_B_sets,
+            # all_B_sets=all_B_sets,
             priors=priors,
             unit_drop_edges=unit_drop_edges, # Use consistent setting
             fixed_k=fixed_k,
@@ -6055,96 +4243,140 @@ def main_tls(
             fitch_probs=fitch_probs_dict
         )
 
-        if bestF_Z is None:
-            print("ERROR: MCMC Phase 1 (Z search) failed to find a valid structure.")
-            return
+        if all_stats_Z and log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+            plot_mcmc_traces(
+                all_stats=all_stats_Z,
+                title=f"MCMC Trace for Potency Sets (Z)",
+                output_path=os.path.join(log_dir, f"trace_Z_tls.png")
+            )
 
+        if bestF_Z is None:
+            print("[ERROR] MCMC-Z Phase 1 failed to find a structure.")
+            raise RuntimeError("MCMC-Z failed")
+
+        Z_map = bestF_Z.Z_active
         print(f"--- MCMC Phase 1 Complete. Best Z score: {best_score_Z:.4f} ---")
         # check_convergence(all_stats_Z) # Check convergence for Z search
 
+        # --- 3. Phase 2: Create F_full ---
+        print("\n--- Phase 2: Building fully-connected graph (F_full) ---")
+        A_full = _full_edges_for_Z(Z_map, unit_drop_edges)
+        F_full = Structure(S, Z_map, A_full, unit_drop_edges)
+        print(f"F_full has {len(Z_map)} nodes and {len(A_full)} admissible edges.")
 
-        # --- MCMC Phase 2: Search for Best A given Best Z ---
-        print("\n--- Starting MCMC Phase 2: Searching for Edges (A) given best Z ---")
-        # Increase iterations slightly for edge search maybe
-        iters_A = iters + 100
-        # + max(50, iters // 10) # Example: add 10% or 50 steps
-
-        bestF_A, best_score_A, all_stats_A = run_mcmc_only_A_parallel(
-            S=S,
-            trees=trees,
-            leaf_type_maps=leaf_type_maps,
-            all_B_sets=all_B_sets,
-            priors=priors,
-            unit_drop_edges=unit_drop_edges, # Use consistent setting
-            fixed_k=fixed_k,
-            steps=iters_A,
-            burn_in=(iters_A * 15) // 100,
-            thin=10,
-            base_seed=456, # Use a different base seed
-            candidate_pool=pool, # Not strictly needed but passed
-            block_swap_sizes=(1,), # Not used in A-only search
-            n_chains=restarts,
-            Z=bestF_Z.Z_active # <<< Pass the best Z found in phase 1
+        # --- 4. Phase 3: Calculate Viterbi Flow ---
+        viterbi_flow = calculate_viterbi_flow(
+            trees, F_full, all_B_sets, leaf_type_maps
         )
+        
+        if not viterbi_flow:
+            print("[ERROR] Viterbi flow calculation returned empty. Cannot build A_map.")
+            raise RuntimeError("Viterbi flow failed")
 
-        if bestF_A is None:
-            print("ERROR: MCMC Phase 2 (A search) failed. Using Z-search result.")
-            bestF = bestF_Z # Fallback
-            best_score = best_score_Z
-        else:
-             print(f"--- MCMC Phase 2 Complete. Best (Z,A) score: {best_score_A:.4f} ---")
-            #  check_convergence(all_stats_A) # Check convergence for A search
-             bestF = bestF_A
-             best_score = best_score_A
+        # --- 5. Phase 4: Select A_map ---
+        S_nodes = {frozenset([t]) for t in S} # Get the set of singletons
+        A_map_final = build_A_map_from_flow(
+            viterbi_flow, 
+            Z_map,
+            S_nodes, # <-- ADD THIS ARGUMENT
+            z_score_threshold=1.5 # You can tune this
+        )
+        
+        # --- 6. Final Scoring and Reporting ---
+        print("\n--- Final Scoring ---")
+        bestF_final = Structure(S, Z_map, A_map_final, unit_drop_edges)
+        
+        # Score this final structure
+        # final_logp_Z = priors.log_prior_Z(S, Z_map)
+        # final_num_admiss = len(A_full) # Num admissible edges for this Z
+        # final_logp_A = priors.log_prior_A(
+        #     Z_map, A_map_final, unit_drop_edges, final_num_admiss
+        # )
+
+        # final_log_L = get_log_likelihood(
+        #     bestF_final, trees, leaf_type_maps, all_B_sets
+        # )
+        
+        # if not math.isfinite(final_logp_Z): final_logp_Z = 0 # Handle -inf prior
+        # if not math.isfinite(final_logp_A): final_logp_A = 0 # Handle -inf prior
+        
+        # best_score_final = final_logp_Z + final_logp_A + final_log_L
+
+        # [Replacement code starting from line ~1894]
+        best_score_final, _ = score_structure(bestF_final, trees, leaf_type_maps, priors)
+
+        # --- AIC/BIC Calculation ---
+        # 1. Get Log-Likelihood (L)
+        best_log_likelihood = get_log_likelihood(
+            bestF_final, trees, leaf_type_maps, all_B_sets
+        )
+        
+        # 2. Get Number of Parameters (K_model)
+        # We define K_model = (num multi-type potencies) + (num edges)
+        num_potencies = fixed_k
+        num_edges = len(bestF_final.A)
+        K_model = num_potencies + num_edges
+        
+        # 3. Get Sample Size (n)
+        # We define n = total number of mapped leaves across all trees
+        n_samples = sum(len(ltm) for ltm in leaf_type_maps)
+        
+        # 4. Calculate AIC and BIC
+        aic = -math.inf
+        bic = -math.inf
+        
+        if math.isfinite(best_log_likelihood) and n_samples > 0:
+            # AIC = 2*K_model - 2*ln(L)
+            aic = 2 * K_model - 2 * best_log_likelihood
+            
+            # BIC = ln(n)*K_model - 2*ln(L)
+            bic = math.log(n_samples) * K_model - 2 * best_log_likelihood
+        
+        # --- End AIC/BIC Calculation ---
 
 
-        # --- Output Results ---
-        if log_dir:
-            os.makedirs(log_dir, exist_ok=True)
-            # Plot traces if needed (using all_stats_Z and all_stats_A)
-            if all_stats_Z:
-                 plot_mcmc_traces(
-                    all_stats=all_stats_Z, 
-                    # burn_in=(iters * 15)//100, 
-                    # thin=10,
-                    title=f"MCMC Trace (Z search) - {os.path.basename(input_file_list)}",
-                    output_path=os.path.join(log_dir, f"trace_Z_{os.path.basename(input_file_list)}.png")
-                 )
-            if all_stats_A:
-                 plot_mcmc_traces(
-                    all_stats=all_stats_A, 
-                    # burn_in=(iters_A * 15)//100, 
-                    # thin=10,
-                    title=f"MCMC Trace (A search) - {os.path.basename(input_file_list)}",
-                    output_path=os.path.join(log_dir, f"trace_A_{os.path.basename(input_file_list)}.png")
-                 )
-
-
-        print("\n=== FINAL BEST MAP STRUCTURE ===")
-        multi_sorted = sorted([P for P in bestF.Z_active if len(P) >= 2],
-                              key=lambda x: (len(x), tuple(sorted(list(x)))))
-        print("Active potencies (multi-type):")
-        for P in multi_sorted: print("  ", pot_str(P))
-        print("\nSingletons (always active):")
-        for t in S: print("  ", "{" + t + "}")
-
-        print("\nEdges:")
-        edges = sorted([e for e, v in bestF.A.items() if v == 1],
-                       key=lambda e: (len(e[0]), len(e[1]), tuple(sorted(list(e[0]))), tuple(sorted(list(e[1])))))
-        for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
-
-        print(f"\nFinal Log Posterior Score: {best_score:.6f}")
-
-        # --- Save summary (optional) ---
+        # print(f"Final Log P(Z): {final_logp_Z:.4f}")
+        # print(f"Final Log P(A|Z): {final_logp_A:.4f} ({len(A_map_final)} edges)")
+        print(f"Final score (with edges): {best_score_final:.4f}")
+        
+        # ... (all the print statements for scores, sets, edges...) ...
+        print("\nScores:")
+        print(f"  Log Posterior (Pred): {best_score_final:.6f}")
+        # ...
+        predicted_sets = {p for p in bestF_final.Z_active if len(p) > 1}
+        pretty_print_sets("Predicted Sets", predicted_sets)
+        # ...
+        edges = sorted([e for e, v in bestF_final.A.items() if v == 1],
+                       key=lambda e: (len(e[0]), tuple(sorted(list(e[0]))), pot_str(e[1])))
+        for (u, v) in sorted(edges, key=lambda e: (len(e[0]), tuple(sorted(e[0])), len(e[1]), tuple(sorted(e[1])))):
+            print(f"{sorted(list(u))} -> {sorted(list(v))}")
+        
+        # --- Create a single-row CSV for this k ---
         with open(out_csv, "w", newline="") as f:
-             writer = csv.writer(f)
-             writer.writerow(["InputFile", "FixedK", "BestLogPosterior", "NumMultiPotencies", "NumEdges"])
-             writer.writerow([
-                 input_file_list, fixed_k, f"{best_score:.6f}",
-                 len(multi_sorted), len(edges)
-             ])
-        print(f"\nResults summary saved to {out_csv}")
-
+            writer = csv.writer(f)
+            header = [
+                "InputFile", "FixedK", "BestLogPosterior", "LogLikelihood", 
+                "AIC", "BIC", "K_model", "n_samples", "NumEdges"
+            ]
+            writer.writerow(header)
+            writer.writerow([
+                input_file_list, fixed_k, f"{best_score_final:.6f}", f"{best_log_likelihood:.6f}",
+                f"{aic:.6f}", f"{bic:.6f}", K_model, n_samples, num_edges
+            ])
+        print(f"\nResults summary for k={fixed_k} saved to {out_csv}")
+        
+        # --- Return results dictionary for summary ---
+        return {
+            "k": fixed_k,
+            "log_posterior": best_score_final,
+            "log_likelihood": best_log_likelihood,
+            "aic": aic,
+            "bic": bic,
+            "k_model": K_model,
+            "n_samples": n_samples,
+            "num_edges": num_edges
+        }
 
     except FileNotFoundError as e:
         print(f"[ERROR] Input file not found: {e}")
@@ -6152,566 +4384,95 @@ def main_tls(
         print(f"[ERROR] An unexpected error occurred:")
         traceback.print_exc()
 
-# def main_multi_type(type_nums=[10,14],
-#                     maps_start=17, maps_end=26,
-#                     cells_list=[50,100,200],
-#                     iters = 50,
-#                     restarts = 4,
-#                     fixed_k = 5,
-#                     out_csv="results_types_6_10_14_maps_17_26.csv",
-#                     log_dir="logs_types",
-#                     tree_kind: str = "graph"):
-#     random.seed(7)
-#     priors = Priors(potency_mode="fixed_k", fixed_k=fixed_k, rho=0.2)
-#     results = []
 
-#     with open(out_csv, "w", newline="") as f:
-#         writer = csv.writer(f)
-#         writer.writerow(["Type","MapIdx","Cells","Jaccard","GT Loss","Pred Loss","Edge_Jaccard","IM_similarity"])
-
-#         for t in type_nums:
-#             for idx in range(maps_start, maps_end+1):
-#                 for cells in cells_list:
-#                     try:
-#                         jd, gt_loss, pred_loss, edge_jacc, im_s = process_case(
-#                             idx, t, cells, priors,
-#                             iters=iters, restarts=restarts, log_dir=log_dir,
-#                             tree_kind=tree_kind, n_jobs= os.cpu_count()-1  # start single-process
-#                         )
-#                         writer.writerow([t, idx, cells, f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}", f"{edge_jacc:.6f}", f"{im_s:.6f}"])
-#                         results.append((t, idx, cells, jd, gt_loss, pred_loss, edge_jacc, im_s))
-#                     except Exception as e:
-#                         print(f"[WARN] Failed type_{t} map {idx:04d} cells_{cells}: {repr(e)}")
-#                         traceback.print_exc()
-#                         writer.writerow([t, idx, cells, "ERROR","ERROR","ERROR", "ERROR","ERROR"])
-#                         results.append((t, idx, cells, None,None,None,None,None))
-
-
-def main_multi_type( # This REPLACES your old `main_multi_type`
-    type_nums=[10,14],
-    maps_start=17, 
-    maps_end=26,
-    cells_list=[50,100,200],
-    iters = 50,
-    restarts = 4,
-    fixed_k = 5,
-    out_csv="results_viterbi_hybrid.csv",
-    log_dir="logs_viterbi_hybrid",
-    tree_kind: str = "graph"
-):
-    random.seed(7)
-    # This must be False for the Viterbi approach, 
-    # as F_full must contain all subset transitions.
-    unit_drop_edges = False 
-    
-    priors = Priors(potency_mode="fixed_k", fixed_k=fixed_k, rho=0.2)
-    results = []
-    
-    if log_dir:
-        os.makedirs(log_dir, exist_ok=True)
-
-    with open(out_csv, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["Type","MapIdx","Cells","Jaccard","GT Loss","Pred Loss","Edge_Jaccard","IM_similarity"])
-
-        for t in type_nums:
-            for idx in range(maps_start, maps_end+1):
-                for cells in cells_list:
-                    try:
-                        jd, gt_loss, pred_loss, edge_jacc, im_s = process_case(
-                            idx, t, cells, priors,
-                            iters=iters, 
-                            restarts=restarts, 
-                            log_dir=log_dir,
-                            tree_kind=tree_kind, 
-                            n_jobs= os.cpu_count()-1,
-                            unit_drop_edges=unit_drop_edges # Pass this
-                        )
-                        writer.writerow([t, idx, cells, f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}", f"{edge_jacc:.6f}", f"{im_s:.6f}"])
-                        results.append((t, idx, cells, jd, gt_loss, pred_loss, edge_jacc, im_s))
-                    except Exception as e:
-                        print(f"[WARN] Failed type_{t} map {idx:04d} cells_{cells}: {repr(e)}")
-                        traceback.print_exc()
-                        writer.writerow([t, idx, cells, "ERROR","ERROR","ERROR", "ERROR","ERROR"])
-                        results.append((t, idx, cells, None,None,None,None,None))
-
-
-def main_multi_type_clever_mwg(
-    type_nums=[10,14],
-    maps_start=17, 
-    maps_end=26,
-    cells_list=[50,100,200],
-    iters=2000,
-    n_chains=4,
-    fixed_k=5,
-    out_csv="results_clever_mcmc.csv",
-    log_dir="logs_clever_mcmc",
-    tree_kind: str = "graph",
-    unit_drop_edges: bool = False,
-    # New params
-    a_steps: int = 5,
-    z_steps: int = 1
-):
-    """
-    Main batch processor. Calls 'process_case_clever_mwg' for each simulation.
-    """
-    random.seed(7)
-    priors = Priors(potency_mode="fixed_k", fixed_k=fixed_k, rho=0.2)
-    
-    if log_dir:
-        os.makedirs(log_dir, exist_ok=True)
-        print(f"Logs and plots will be saved to: {log_dir}")
-        
-    results = []
-
-    # Write header for the new CSV
-    csv_header = [
-        "Type", "MapIdx", "Cells", "FixedK",
-        "Jaccard_Sets", "GT_LogPost", "Pred_LogPost", 
-        "Jaccard_Edges", "IM_Similarity",
-        "Iters", "Chains", "A_Steps", "Z_Steps"
-    ]
-
-    with open(out_csv, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(csv_header)
-
-        for t in type_nums:
-            for idx in range(maps_start, maps_end + 1):
-                for cells in cells_list:
-                    try:
-                        jd, gt_loss, pred_loss, edge_jacc, im_s = process_case_clever_mwg(
-                            map_idx=idx, 
-                            type_num=t, 
-                            cells_n=cells, 
-                            priors=priors,
-                            iters=iters, 
-                            n_chains=n_chains, 
-                            log_dir=log_dir,
-                            tree_kind=tree_kind,
-                            unit_drop_edges=unit_drop_edges,
-                            a_steps=a_steps, 
-                            z_steps=z_steps
-                        )
-                        
-                        row = [
-                            t, idx, cells, fixed_k,
-                            f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}", 
-                            f"{edge_jacc:.6f}", f"{im_s:.6f}",
-                            iters, n_chains, a_steps, z_steps
-                        ]
-                        writer.writerow(row)
-                        results.append(tuple(row)) # Save for summary
-
-                    except Exception as e:
-                        print(f"[WARN] FAILED CASE: type_{t} map {idx:04d} cells_{cells}: {repr(e)}")
-                        traceback.print_exc()
-                        row = [
-                            t, idx, cells, fixed_k,
-                            "ERROR", "ERROR", "ERROR", "ERROR", "ERROR",
-                            iters, n_chains, a_steps, z_steps
-                        ]
-                        writer.writerow(row)
-                        results.append(tuple(row))
-                        
-    print(f"\nBatch processing complete. Results saved to {out_csv}")
-
-
+# [Replacement code for line ~1970]
 if __name__ == "__main__":
-
-    # # --- Run the new "Clever MwG" sampler on your simulated data ---
-    # main_multi_type_clever_mwg(
-    #     type_nums=[6],
-    #     maps_start=2,
-    #     maps_end=2,
-    #     cells_list=[50],
-    #     iters = 100,           # Total MCMC steps per chain (low for testing)
-    #     n_chains = 1,          # Number of parallel chains
-    #     fixed_k = 5,
-    #     out_csv="clever_mcmc_results.csv",
-    #     log_dir="clever_mcmc_logs",
-    #     tree_kind="graph",
-    #     unit_drop_edges=False, # Use non-unit-drop edges
-    #     a_steps=5,             # Inner loops for A-step
-    #     z_steps=1              # Inner loops for Z-step
-    # )
-
-    #  # --- Main execution for collapsed LARRY data ---
-    #  main_larry_collapsed(
-    #      collapsed_mat_path="collapsed_clone_type_mat.csv", # Use the uploaded file name
-    #      iters=100,      # Adjust MCMC iterations (e.g., 500-2000+)
-    #      restarts=1,     # Adjust number of parallel chains (e.g., 4-8)
-    #      fixed_k=7,      # << SET your desired number of multi-type potencies >>
-    #      out_csv="larry_mcmc_results_k7.csv", # Output file name
-    #      log_dir="larry_mcmc_logs_k7",    # Directory for trace plots
-    #      unit_drop_edges=False # Set True if you want only single-step transitions
-    #  )
-
-     # You can add more calls to main_larry_collapsed here to test different k values
-     # Example:
-     # main_larry_collapsed(
-     #     collapsed_mat_path="collapsed_clone_type_mat (1).csv",
-     #     iters=500, restarts=4, fixed_k=8,
-     #     out_csv="larry_mcmc_results_k8.csv", log_dir="larry_mcmc_logs_k8", unit_drop_edges=False
-     # )
-
-
-# if __name__ == "__main__":
-
-#     #Only change in read_trees_and_maps
-
-#     # --- NEW MAIN EXECUTION for TLS data ---
-#     main_tls(
-#         # **CHANGED**: Updated the input file path
-#         input_file_list="TLS_locations.txt",
-#         iters=100,
-#         restarts=7,
-#         fixed_k=7,
-#         out_csv="tls_run_results_7_new2.csv",
-#         log_dir="tls_run_logs"
-#     )
-
-# if __name__ == "__main__":
-#     # --- Original main execution is commented out ---
-#     # main_tls(
-#     #     input_file_list="TLS_locations.txt",
-#     #     iters=100,
-#     #     restarts=7,
-#     #     fixed_k=7,
-#     #     out_csv="tls_run_results_7_new.csv",
-#     #     log_dir="tls_run_logs"
-#     # )
-
-#     # <<< --- NEW CODE TO EVALUATE A SPECIFIC Z --- >>>
-
-#     def evaluate_specific_Z(
-#         input_file_list: str,
-#         fixed_k_from_run: int, # The k used in the main run
-#         multi_potencies_to_test: Set[FrozenSet[str]]
-#     ):
-#         """
-#         Loads data and calculates the 'Z-only' MCMC score for a specific
-#         set of multi-type potencies.
-#         """
-#         print(f"--- Evaluating Specific Z (original run k={fixed_k_from_run}) ---")
+    
+    # --- Define Your Experiment Parameters ---
+    
+    # 1. Define the range of k values you want to test
+    K_RANGE = list(range(5, 9)) # e.g., [5, 6, 7, 8, 9, 10, 11, 12]
+    
+    # 2. Set MCMC parameters
+    MCMC_ITERATIONS = 60 # Set this to your desired value (e.g., 500, 1000)
+    MCMC_CHAINS = 5       # Number of parallel restarts (e.g., 4, 7)
+    
+    # 3. Define input/output paths
+    INPUT_LIST_FILE = "TLS_locations.txt"
+    LOG_DIRECTORY = "tls_run_logs_viterbi_k_sweep"
+    SUMMARY_CSV_FILE = "tls_aic_bic_summary.csv"
+    
+    # ------------------------------------------
+    
+    print(f"--- Starting AIC/BIC Model Selection ---")
+    print(f"Testing k values: {K_RANGE}")
+    print(f"MCMC settings: {MCMC_ITERATIONS} iterations, {MCMC_CHAINS} chains")
+    print(f"Log directory: {LOG_DIRECTORY}")
+    print(f"Summary CSV: {SUMMARY_CSV_FILE}")
+    
+    if LOG_DIRECTORY:
+        os.makedirs(LOG_DIRECTORY, exist_ok=True)
         
-#         # This prior must match the one used in your main_tls run
-#         priors = Priors(potency_mode="fixed_k", fixed_k=fixed_k_from_run, rho=0.2)
-#         unit_drop_edges = False # Match main_tls
+    all_k_results = []
 
-#         try:
-#             # 1. & 2. Load data (same as main_tls)
-#             tree_paths, meta_paths = parse_input_file_list(input_file_list)
-#             trees, leaf_type_maps, S = read_trees_and_maps(tree_paths, meta_paths)
-#             print(f"Loaded {len(trees)} trees. Type universe S: {S}")
-
-#             # 3. Precompute B_sets (same as main_tls)
-#             all_B_sets = [compute_B_sets(tree, ltm) for tree, ltm in zip(trees, leaf_type_maps)]
-
-#             # 4. Construct the full Z_active set
-#             singletons = {frozenset([t]) for t in S}
-#             Z_active = multi_potencies_to_test | singletons
-
-#             print("\nPotency sets being tested:")
-#             for p in sorted(multi_potencies_to_test, key=lambda x: (len(x), tuple(sorted(x)))):
-#                 print(f"  {pot_str(p)}")
-            
-#             # 5. Check k and calculate the log prior P(Z)
-#             num_multis_provided = len(multi_potencies_to_test)
-#             if num_multis_provided != fixed_k_from_run:
-#                 print(f"\n[Warning] Number of provided sets ({num_multis_provided}) does not match the run's fixed_k ({fixed_k_from_run}).")
-#                 print(f"[Info] The log P(Z) will be calculated using k={num_multis_provided} to match the provided set.")
-#                 # Use a prior matching the *provided* number of sets for this evaluation
-#                 priors_eval = Priors(potency_mode="fixed_k", fixed_k=num_multis_provided, rho=0.2)
-#             else:
-#                 print(f"\n[Info] Number of provided sets ({num_multis_provided}) matches run's fixed_k ({fixed_k_from_run}).")
-#                 priors_eval = priors # Use the original prior
-
-#             logp_Z = priors_eval.log_prior_Z(S, Z_active)
-            
-#             if not math.isfinite(logp_Z):
-#                 print(f"ERROR: The provided Z set has a log prior of -inf.")
-#                 print(f"This is likely because the number of available multi-type potencies")
-#                 print(f"in the data (derived from S={S}) is less than k={priors_eval.fixed_k}.")
-#                 return
-
-#             print(f"Calculated log P(Z): {logp_Z:.6f}")
-
-#             # 6. Create the special Structure for Z-only scoring
-#             # The edge set A is irrelevant when using SubsetReach, so pass empty.
-#             A_dummy = {} 
-#             struct_to_score = Structure(S, Z_active, A_dummy, unit_drop=unit_drop_edges)
-            
-#             # CRITICAL STEP: Use SubsetReach to mimic the Z-only MCMC's
-#             # assumption that reachability == subset.
-#             struct_to_score.Reach = SubsetReach()
-
-#             # 7. Score the structure using the Z-only-MCMC's score function
-#             print("Scoring structure using 'score_structure_no_edge_prior'...")
-#             z_only_score, _ = score_structure_no_edge_prior(
-#                 struct_to_score,
-#                 trees,
-#                 leaf_type_maps,
-#                 all_B_sets,
-#                 priors_eval,
-#                 precomputed_logp_Z=logp_Z
-#             )
-
-#             print("\n" + "="*30)
-#             print(f"FINAL Z-ONLY SCORE: {z_only_score:.6f}")
-#             print("="*30)
-
-#         except FileNotFoundError as e:
-#             print(f"[ERROR] Input file not found: {e}")
-#         except Exception as e:
-#             print(f"[ERROR] An unexpected error occurred:")
-#             traceback.print_exc()
-
-#     # --- Define the sets you want to test ---
-#     # This is the list from your prompt
-#     # target_multi_potencies = {
-#     #     frozenset(['Endoderm','Endothelial','NMPs','NeuralTube','PCGLC','Somite']),
-#     #     frozenset(['NMPs','NeuralTube']),
-#     #     frozenset(['NeuralTube','Somite']),
-#     #     frozenset(['Somite', 'Endothelial']),
-#     #     frozenset(['Endothelial', 'NeuralTube','Somite']),
-#     #     frozenset(['Endothelial', 'NeuralTube','PCGLC','Somite']),
-#     #     frozenset(['NeuralTube','Somite','Endoderm']),
-#     # }
-
-#     # target_multi_potencies = {
-#     #     frozenset(['NMPs','NeuralTube']),
-#     #     frozenset(['NMPs','Somite']),
-#     #     frozenset(['NeuralTube','Somite']),
-#     #     frozenset(['NMPs','NeuralTube','Somite']),
-#     #     frozenset(['Endothelial','NMPs','NeuralTube','Somite']),
-#     #     frozenset(['Endoderm','Endothelial','NMPs','NeuralTube','Somite']),
-#     #     frozenset(['Endoderm','Endothelial','NMPs','NeuralTube','PCGLC','Somite'])
-#     # }
-
-#     # --- Run the evaluation ---
-#     # These parameters must match your main_tls call
-#     # evaluate_specific_Z(
-#     #     input_file_list="TLS_locations.txt",
-#     #     fixed_k_from_run=7, # This matches your main_tls call (fixed_k=7)
-#     #     multi_potencies_to_test=target_multi_potencies
-#     # )
-
-#     # <<< --- FUNCTION 2: EVALUATE Z and A (NEW) --- >>>
-
-#     def evaluate_specific_ZA(
-#         title: str,
-#         input_file_list: str,
-#         fixed_k_from_run: int, # The k used in the main run
-#         multi_potencies_to_test: Set[FrozenSet[str]],
-#         edges_to_test: Set[Tuple[FrozenSet[str], FrozenSet[str]]]
-#     ):
-#         """
-#         Loads data and calculates the 'full' MCMC score for a specific
-#         set of multi-type potencies (Z) AND edges (A).
-#         """
-#         print(f"\n{'-'*60}\n--- {title} ---\n{'-'*60}")
-#         print(f"Scoring Target: log P(Z) + log P(A|Z) + sum log P(T|Z,A) (Full MCMC score)")
+    for k_val in K_RANGE:
+        print(f"\n{'='*60}\n[RUNNING] k = {k_val}\n{'='*60}")
         
-#         # This prior must match the one used in your main_tls run
-#         priors = Priors(potency_mode="fixed_k", fixed_k=fixed_k_from_run, rho=0.2)
-#         unit_drop_edges = False # Match main_tls
-
-#         try:
-#             # 1. & 2. Load data
-#             tree_paths, meta_paths = parse_input_file_list(input_file_list)
-#             trees, leaf_type_maps, S = read_trees_and_maps(tree_paths, meta_paths)
-#             print(f"Loaded {len(trees)} trees. Type universe S: {S}")
-
-#             # 3. Precompute B_sets
-#             all_B_sets = [compute_B_sets(tree, ltm) for tree, ltm in zip(trees, leaf_type_maps)]
-
-#             # 4. Construct the full Z_active set
-#             singletons = {frozenset([t]) for t in S}
-#             Z_active = multi_potencies_to_test | singletons
-
-#             print("\nPotency sets (Z) being tested:")
-#             for p in sorted(multi_potencies_to_test, key=lambda x: (len(x), tuple(sorted(x)))):
-#                 print(f"  {pot_str(p)}")
-
-#             # 5. Check k and calculate the log prior P(Z)
-#             num_multis_provided = len(multi_potencies_to_test)
-#             if num_multis_provided != fixed_k_from_run:
-#                 print(f"\n[Warning] Number of provided Z sets ({num_multis_provided}) does not match run's fixed_k ({fixed_k_from_run}).")
-#                 priors_eval = Priors(potency_mode="fixed_k", fixed_k=num_multis_provided, rho=0.2)
-#             else:
-#                 print(f"\n[Info] Number of provided Z sets ({num_multis_provided}) matches run's fixed_k ({fixed_k_from_run}).")
-#                 priors_eval = priors
-
-#             logp_Z = priors_eval.log_prior_Z(S, Z_active)
-#             if not math.isfinite(logp_Z):
-#                 print(f"ERROR: The provided Z set has a log prior of -inf.")
-#                 return
-#             print(f"Calculated log P(Z): {logp_Z:.6f}")
-
-#             # 6. Construct the edge set (A)
-#             A = {edge: 1 for edge in edges_to_test}
-#             print(f"\nEdges (A) being tested ({len(A)} total):")
-#             for u, v in sorted(A.keys(), key=lambda e: (len(e[0]), pot_str(e[0]), pot_str(e[1]))):
-#                 print(f"  {pot_str(u)} -> {pot_str(v)}")
-
-#             # 7. Calculate total number of *admissible* edges for P(A|Z)
-#             num_admissible = 0
-#             for P in Z_active:
-#                 for Q in Z_active:
-#                     if admissible_edge(P, Q, unit_drop_edges):
-#                         num_admissible += 1
-#             print(f"\nTotal admissible edges for this Z: {num_admissible}")
+        # Define output CSV path for this specific k
+        k_csv_out = os.path.join(LOG_DIRECTORY, f"tls_k{k_val}_results.csv")
+        
+        try:
+            results_dict = main_tls(
+                input_file_list=INPUT_LIST_FILE,
+                iters=MCMC_ITERATIONS,
+                restarts=MCMC_CHAINS,
+                fixed_k=k_val,
+                out_csv=k_csv_out,
+                log_dir=LOG_DIRECTORY
+            )
             
-#             # 8. Create the full Structure object
-#             # This will compute the real transitive closure (Reach)
-#             print("Building full structure (with transitive closure)...")
-#             struct_to_score = Structure(S, Z_active, A, unit_drop=unit_drop_edges)
+            if results_dict:
+                all_k_results.append(results_dict)
+            
+            print(f"[SUCCESS] Finished k = {k_val}")
+            print(f"  > AIC: {results_dict['aic']:.4f}")
+            print(f"  > BIC: {results_dict['bic']:.4f}")
+            print(f"  > LogLik: {results_dict['log_likelihood']:.4f}")
 
-#             # 9. Score the structure using the FULL score function
-#             print("Scoring structure using 'score_structure'...")
-#             full_score, _ = score_structure(
-#                 struct_to_score,
-#                 trees,
-#                 leaf_type_maps,
-#                 all_B_sets,
-#                 priors_eval,
-#                 num_admissible_edges=num_admissible, # Pass this for fast P(A|Z)
-#                 precomputed_logp_Z=logp_Z
-#             )
+        except Exception as e:
+            print(f"\n[ERROR] Failed to run for k = {k_val}")
+            print(f"Error: {e}")
+            traceback.print_exc()
 
-#             print("\n" + "="*30)
-#             print(f"FINAL FULL SCORE: {full_score:.6f}")
-#             print("="*30)
+    # --- Write Final Summary CSV ---
+    if not all_k_results:
+        print("\nNo results were collected. Exiting.")
+    else:
+        print(f"\n--- Model Selection Summary ---")
+        print(f"{'k':<4} | {'LogLikelihood':<15} | {'AIC':<15} | {'BIC':<15} | {'K_model':<8} | {'NumEdges':<8}")
+        print("-" * 79)
+        
+        # Sort by BIC (lowest is best)
+        all_k_results.sort(key=lambda x: x['bic'])
+        
+        for res in all_k_results:
+            print(f"{res['k']:<4} | {res['log_likelihood']:<15.4f} | {res['aic']:<15.4f} | {res['bic']:<15.4f} | {res['k_model']:<8} | {res['num_edges']:<8}")
 
-#         except FileNotFoundError as e:
-#             print(f"[ERROR] Input file not found: {e}")
-#         except Exception as e:
-#             print(f"[ERROR] An unexpected error occurred:")
-#             traceback.print_exc()
-
-#     # =================================================================
-#     # --- Run Evaluations ---
-#     # =================================================================
-
-#     # --- Evaluation 1: The Z-set from your previous prompt ---
-    
-#     # This is the list from your last prompt
-#     # prev_target_multi_potencies = {
-#     #     frozenset(['NMPs','NeuralTube']),
-#     #     frozenset(['NMPs','Somite']),
-#     #     frozenset(['NeuralTube','Somite']),
-#     #     frozenset(['NMPs','NeuralTube','Somite']),
-#     #     frozenset(['Endothelial','NMPs','NeuralTube','Somite']),
-#     #     frozenset(['Endoderm','Endothelial','NMPs','NeuralTube','Somite']),
-#     #     frozenset(['Endoderm','Endothelial','NMPs','NeuralTube','PCGLC','Somite'])
-#     # }
-    
-#     # evaluate_specific_Z(
-#     #     title="Evaluation 1: User-Provided Z set (Z-only score)",
-#     #     input_file_list="TLS_locations.txt",
-#     #     fixed_k_from_run=7, # This matches your main_tls call (fixed_k=7)
-#     #     multi_potencies_to_test=prev_target_multi_potencies
-#     # )
-
-#     # --- Evaluation 2: The Z and A from the CARTA GRAPH IMAGE ---
-
-#     # Define potencies (Z) from the Carta graph
-#     # P_root = frozenset(['NMPs', 'NeuralTube', 'Somite', 'Endoderm', 'Endothelial', 'PCGLC'])
-#     # P_MNS = frozenset(['NMPs', 'NeuralTube', 'Somite'])
-#     # P_NSD = frozenset(['NeuralTube', 'Somite', 'Endoderm'])
-#     # P_NSTP = frozenset(['NeuralTube', 'Somite', 'Endothelial', 'PCGLC'])
-#     # P_MN = frozenset(['NMPs', 'NeuralTube'])
-#     # P_NS = frozenset(['NeuralTube', 'Somite'])
-#     # P_ST = frozenset(['Somite', 'Endothelial'])
-
-#     P_NN = frozenset(['NMPs', 'NeuralTube'])
-#     P_NS = frozenset(['NMPs', 'Somite'])
-#     P_TS = frozenset(['NeuralTube', 'Somite'])
-#     P_NNS = frozenset(['NMPs', 'NeuralTube', 'Somite'])
-#     P_ENNS = frozenset(['Endothelial', 'NMPs', 'NeuralTube', 'Somite'])
-#     P_DENNS = frozenset(['Endoderm', 'Endothelial', 'NMPs', 'NeuralTube', 'Somite'])
-#     P_DENNPS = frozenset(['Endoderm', 'Endothelial', 'NMPs', 'NeuralTube', 'PCGLC', 'Somite'])
-    
-#     # graph_multi_potencies = {
-#     #     P_root, P_MNS, P_NSD, P_NSTP, P_MN, P_NS, P_ST
-#     # } # This is 7 sets, matching k=7
-
-#     new_graph_multi_potencies = {
-#         P_NN, P_NS, P_TS, P_NNS, P_ENNS, P_DENNS, P_DENNPS
-#     } # This is 7 sets, matching k=7
-
-#     # Define singletons (for edge definitions) using DATA strings
-#     P_M = frozenset(['NMPs'])
-#     P_N = frozenset(['NeuralTube'])
-#     P_S = frozenset(['Somite'])
-#     P_D = frozenset(['Endoderm'])
-#     P_T = frozenset(['Endothelial'])
-#     P_P = frozenset(['PCGLC'])
-
-#     # Define the 16 edges (A) from your new list
-#     new_graph_edges = {
-#         (P_NN, P_N),
-#         (P_NS, P_M),
-#         (P_TS, P_N),
-#         (P_NNS, P_N),
-#         (P_NNS, P_S),
-#         (P_NNS, P_NS),
-#         (P_ENNS, P_NNS),
-#         (P_DENNS, P_D),
-#         (P_DENNS, P_T),
-#         (P_DENNS, P_NS),
-#         (P_DENNS, P_TS),
-#         (P_DENNS, P_NNS),
-#         (P_DENNS, P_ENNS),
-#         (P_DENNPS, P_NN),
-#         (P_DENNPS, P_NS),
-#         (P_DENNPS, P_DENNS),
-#     } # This is 16 edges
-
-
-#     # Define edges (A) from the Carta graph (excluding non-subset edges)
-#     # graph_edges = {
-#     #     (P_root, P_MNS),
-#     #     (P_root, P_NSD),
-#     #     (P_root, P_NSTP),
-#     #     (P_MNS, P_MN),
-#     #     (P_MNS, P_NS),
-#     #     (P_MNS, P_S),  # Red edge M,N,S -> S
-#     #     (P_MNS, P_N),
-#     #     (P_NSD, P_NS),
-#     #     (P_NSD, P_D),
-#     #     (P_NSD, P_S),
-#     #     (P_NSTP, P_ST),
-#     #     (P_NSTP, P_NS),
-#     #     (P_NSTP, P_S), # Red edge N,S,T,P -> S
-#     #     (P_NSTP, P_P),
-#     #     (P_MN, P_M),
-#     #     (P_MN, P_N),
-#     #     (P_NS, P_N),
-#     #     (P_NS, P_S),
-#     #     (P_ST, P_S),
-#     #     (P_ST, P_T)
-#     # } # This is 20 edges
-
-#     evaluate_specific_ZA(
-#         title="Evaluation 2: Carta Graph Structure (Full Z+A score)",
-#         input_file_list="TLS_locations.txt",
-#         fixed_k_from_run=7, # This matches your main_tls call (fixed_k=7)
-#         multi_potencies_to_test=new_graph_multi_potencies,
-#         edges_to_test=new_graph_edges
-#     )
-
-
-    main_multi_type(
-        type_nums=[6],
-        maps_start=2,
-        maps_end=6,
-        cells_list=[50],
-        iters = 10,
-        restarts = 7,
-        fixed_k = 5,
-        out_csv="viterbi_6_50_new.csv",
-        log_dir="viterbi_6_50",
-        tree_kind="graph"   # or "bin_trees" or "graph"
-    )
+        best_model = all_k_results[0]
+        print(f"\nBest model selected by BIC: k = {best_model['k']} (BIC: {best_model['bic']:.4f})")
+        
+        # Write the summary file
+        try:
+            with open(SUMMARY_CSV_FILE, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=all_k_results[0].keys())
+                writer.writeheader()
+                writer.writerows(all_k_results)
+            print(f"Full summary saved to {SUMMARY_CSV_FILE}")
+        except Exception as e:
+            print(f"Error saving summary CSV: {e}")
+        # --- ADD THIS BLOCK TO PLOT THE ELBOW ---
+        plot_pareto_elbow(
+            results_list=all_k_results,
+            title=f"Pareto Frontier / Elbow Method for Optimal k",
+            output_path=os.path.join(LOG_DIRECTORY, "elbow_plot.png")
+        )

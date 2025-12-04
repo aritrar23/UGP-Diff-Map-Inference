@@ -1900,15 +1900,886 @@ def _full_edges_for_Z(Z_active: Set[FrozenSet[str]], unit_drop_edges: bool) -> D
     return A
 
 
+# ==============================================================================
+# === FAST VITERBI SCORING (No Backpointers) ===================================
+# ==============================================================================
+
+# def sparse_convolve_2d_viterbi_fast(
+#     A: Dict[Tuple[int, int], float], 
+#     B: Dict[Tuple[int, int], float]
+# ) -> Dict[Tuple[int, int], float]:
+#     """
+#     Fast Viterbi convolution for scoring only. 
+#     Computes MAX score only. NO backpointers.
+#     """
+#     if not A: return B
+#     if not B: return A
+    
+#     out: Dict[Tuple[int, int], float] = {}
+    
+#     for (o1, d1), log_w1 in A.items():
+#         for (o2, d2), log_w2 in B.items():
+#             key = (o1 + o2, d1 + d2)
+#             new_log_w = log_w1 + log_w2
+            
+#             # Optimized max tracking
+#             if new_log_w > out.get(key, -math.inf):
+#                 out[key] = new_log_w
+                
+#     return out
+
+# def dp_tree_root_viterbi_fast(
+#     root: TreeNode,
+#     active_labels: List[FrozenSet[str]],
+#     Reach: Dict[FrozenSet[str], Set[FrozenSet[str]]],
+#     B_sets: Dict[TreeNode, Set[str]],
+# ) -> Dict[Tuple[int, int], float]:
+#     """
+#     Fast Viterbi DP. Returns only the root table mapping (O,D) -> max_log_prob.
+    
+#     OPTIMIZATION FIX: Uses (Node, Label) memoization to prevent redundant 
+#     convolutions when multiple parents allow the same child label.
+#     """
+#     # Memoization: (node_id, label_index) -> Dict[(o,d), score]
+#     memo = {}
+    
+#     # Pre-convert Reach to list indices for speed
+#     label_to_idx = {L: i for i, L in enumerate(active_labels)}
+#     Reach_indices = {
+#         label_to_idx[P]: [label_to_idx[Q] for Q in qs] 
+#         for P, qs in Reach.items()
+#     }
+    
+#     # Optimization: Pre-fetch B_sets counts
+#     # node_id -> label_idx -> (o, d)
+#     node_obs_counts = {}
+#     def precompute_counts(v):
+#         Bv = B_sets.get(v, set())
+#         counts = {}
+#         for i, L in enumerate(active_labels):
+#             if Bv.issubset(L):
+#                 counts[i] = (len(L & Bv), len(L - Bv))
+#         node_obs_counts[id(v)] = counts
+#         for c in v.children: precompute_counts(c)
+#     precompute_counts(root)
+
+#     def get_node_label_table(v: TreeNode, label_idx: int) -> Dict[Tuple[int, int], float]:
+#         """
+#         Computes the table for node 'v' ASSUMING it has label 'active_labels[label_idx]'.
+#         """
+#         node_id = id(v)
+#         memo_key = (node_id, label_idx)
+        
+#         if memo_key in memo:
+#             return memo[memo_key]
+
+#         # 1. Get Local Counts
+#         # If label not valid for this node's observations, return empty
+#         if label_idx not in node_obs_counts[node_id]:
+#             return {}
+        
+#         o_local, d_local = node_obs_counts[node_id][label_idx]
+
+#         # 2. Base Case: Leaf
+#         if v.is_leaf():
+#             # Log(1.0) = 0.0
+#             res = {(o_local, d_local): 0.0}
+#             memo[memo_key] = res
+#             return res
+
+#         # 3. Recursive Step: Convolve Children
+#         # We need to combine results from all children.
+#         # For each child, we pick the BEST compatible label Q.
+        
+#         allowed_child_indices = Reach_indices.get(label_idx, [])
+        
+#         # Current accumulated table (starts as identity)
+#         conv_scores = {(0, 0): 0.0}
+        
+#         for child in v.children:
+#             # Find best table for this child across all allowed Q
+#             child_best_scores = {} # (o,d) -> max_score
+            
+#             found_valid_child_label = False
+            
+#             for child_lbl_idx in allowed_child_indices:
+#                 # RECURSE: Get table for child u with label Q
+#                 t_child = get_node_label_table(child, child_lbl_idx)
+                
+#                 if not t_child: continue
+#                 found_valid_child_label = True
+                
+#                 # Maximize over Q: Merge this Q's results into child_best_scores
+#                 for od, sc in t_child.items():
+#                     if sc > child_best_scores.get(od, -math.inf):
+#                         child_best_scores[od] = sc
+            
+#             if not found_valid_child_label:
+#                 # This parent label L is impossible because child 'u' has no valid label Q
+#                 memo[memo_key] = {}
+#                 return {}
+            
+#             # Convolve this child's best scores into the accumulator
+#             conv_scores = sparse_convolve_2d_viterbi_fast(conv_scores, child_best_scores)
+#             if not conv_scores:
+#                 memo[memo_key] = {}
+#                 return {}
+
+#         # 4. Add Local Counts
+#         final_scores = {}
+#         for (Oc, Dc), log_w in conv_scores.items():
+#             final_scores[(Oc + o_local, Dc + d_local)] = log_w
+
+#         memo[memo_key] = final_scores
+#         return final_scores
+
+#     # --- Main Root Calculation ---
+#     # The root can have ANY label. We aggregate the best scores across all possible root labels.
+    
+#     final_root_table = {}
+    
+#     for root_lbl_idx in range(len(active_labels)):
+#         t_root = get_node_label_table(root, root_lbl_idx)
+#         for od, sc in t_root.items():
+#             if sc > final_root_table.get(od, -math.inf):
+#                 final_root_table[od] = sc
+                
+#     return final_root_table
+
+# def score_structure_viterbi_no_edge_prior(
+#     struct: Structure,
+#     trees: List[TreeNode],
+#     leaf_type_maps: List[Dict[str,str]],
+#     priors: Priors,
+#     prune_eps: float = 0.0 # Kept for signature compatibility
+# ) -> Tuple[float, List[float]]:
+#     """
+#     Calculates Viterbi Score (Max Path) without edge priors.
+#     Used for MCMC optimization in Phase 1.
+#     """
+#     logp = priors.log_prior_Z(struct.S, struct.Z_active)
+#     if not math.isfinite(logp):
+#         return float("-inf"), []
+
+#     logLs = []
+    
+#     # Pre-compute B_sets inside loop
+#     for root, leaf_to_type in zip(trees, leaf_type_maps):
+#         B_sets = compute_B_sets(root, leaf_to_type)
+        
+#         # Use the FAST Viterbi DP
+#         root_table = dp_tree_root_viterbi_fast(
+#             root, struct.labels_list, struct.Reach, B_sets
+#         )
+        
+#         if not root_table:
+#             return float("-inf"), []
+            
+#         # Maximize over (O, D) at the root
+#         best_tree_score = -math.inf
+#         for (O, D), log_w in root_table.items():
+#             # Add Beta term: lgamma(O+1) + lgamma(D+1) - lgamma(O+D+2)
+#             log_beta = math.lgamma(O+1) + math.lgamma(D+1) - math.lgamma(O+D+2)
+#             score = log_w + log_beta
+#             if score > best_tree_score:
+#                 best_tree_score = score
+        
+#         if not math.isfinite(best_tree_score):
+#              return float("-inf"), []
+             
+#         logLs.append(best_tree_score + logp)
+
+#     return sum(logLs), logLs
+
+
+import sys
+import math
+from typing import Dict, Tuple, List, Set, FrozenSet, Optional
+
+import math
+
+def greedy_bottom_up_labeling(
+    root: TreeNode, 
+    Z_active: List[FrozenSet[str]], 
+    B_sets: Dict[TreeNode, Set[str]]
+) -> Tuple[Dict[TreeNode, FrozenSet[str]], float]:
+    """
+    A 'Greedy' Bottom-Up Labeling Algorithm.
+    
+    Logic:
+      1. Visit nodes in Post-Order (Leaves -> Root).
+      2. At each node, assume the children's labels are FIXED.
+      3. Choose the single best label L for the current node that satisfies:
+         - Data constraint: B(v) is a subset of L
+         - Structural constraint: All fixed child labels are subsets of L
+    
+    Returns:
+      - labeling: A dict mapping Node -> Chosen Label
+      - total_score: The total log-likelihood (or -inf if greedy failed)
+    """
+    
+    # Store the FINAL decision for every node here
+    labeling_decisions: Dict[TreeNode, FrozenSet[str]] = {}
+
+    def solve_node(v: TreeNode) -> float:
+        """
+        Returns the max score for the subtree rooted at v, 
+        given that v's label is chosen greedily.
+        """
+        
+        # --- 1. Recursively Solve Children First ---
+        child_scores_sum = 0.0
+        
+        # Because we recurse first, by the time we reach the code below,
+        # 'labeling_decisions' is already populated for all children of v.
+        for child in v.children:
+            s = solve_node(child)
+            if s == -math.inf:
+                return -math.inf # Propagate failure up
+            child_scores_sum += s
+
+        # --- 2. Choose Best Label for Current Node v ---
+        best_L = None
+        max_score = -math.inf
+        
+        Bv = B_sets.get(v, set())
+
+        for L in Z_active:
+            # A. Data Consistency Check
+            # The label L must contain all observed types in this subtree
+            if not Bv.issubset(L):
+                continue
+
+            # B. Structural Consistency Check (The Greedy Constraint)
+            # The label L must be a superset of the ALREADY CHOSEN child labels
+            children_valid = True
+            for child in v.children:
+                fixed_child_label = labeling_decisions[child]
+                if not fixed_child_label.issubset(L):
+                    children_valid = False
+                    break
+            
+            if not children_valid:
+                continue
+
+            # C. Calculate Score (Beta-Binomial Log-Likelihood)
+            # O = Observed (intersection), D = Missed (set difference)
+            O = len(L & Bv)
+            D = len(L - Bv)
+            
+            # log Beta(O+1, D+1) = lgamma(O+1) + lgamma(D+1) - lgamma(O+D+2)
+            local_log_prob = math.lgamma(O+1) + math.lgamma(D+1) - math.lgamma(O+D+2)
+            
+            total_node_score = local_log_prob + child_scores_sum
+            
+            # Greedy Selection: Keep track of the single best L
+            if total_node_score > max_score:
+                max_score = total_node_score
+                best_L = L
+
+        # --- 3. Lock in the Decision ---
+        if best_L is not None:
+            labeling_decisions[v] = best_L
+            return max_score
+        else:
+            # FAILURE: No label L exists that is a superset of B(v) 
+            # AND a superset of all the greedy child choices.
+            return -math.inf
+
+    # Start recursion
+    final_score = solve_node(root)
+    
+    return labeling_decisions, final_score
+
+# ==============================================================================
+# === HIGH-PERFORMANCE VITERBI SCORING (Beam Search + Caching) =================
+# ==============================================================================
+
+def sparse_convolve_2d_viterbi_fast_optimized(
+    A: Dict[Tuple[int, int], float], 
+    B: Dict[Tuple[int, int], float],
+    beam_width: int = 15  # OPTIMIZATION: Keep only top-K paths. Tune this (10-50).
+) -> Dict[Tuple[int, int], float]:
+    """
+    Fast Viterbi convolution with BEAM SEARCH PRUNING.
+    Only considers the top 'beam_width' entries from each table.
+    """
+    if not A: return B
+    if not B: return A
+    
+    # OPTIMIZATION 1: Beam Search / Pruning
+    # Sorting is expensive, but N is small (beam_width). 
+    # If tables are huge, this saves massive time in the NxM loop.
+    if len(A) > beam_width:
+        items_A = sorted(A.items(), key=lambda x: x[1], reverse=True)[:beam_width]
+    else:
+        items_A = list(A.items())
+        
+    if len(B) > beam_width:
+        items_B = sorted(B.items(), key=lambda x: x[1], reverse=True)[:beam_width]
+    else:
+        items_B = list(B.items())
+    
+    out: Dict[Tuple[int, int], float] = {}
+    
+    # The loop is now bounded by beam_width^2 (e.g., 15*15 = 225 iterations max)
+    for (o1, d1), log_w1 in items_A:
+        for (o2, d2), log_w2 in items_B:
+            # Quick check: if either is -inf (impossible), skip
+            if log_w1 == -math.inf or log_w2 == -math.inf:
+                continue
+
+            key = (o1 + o2, d1 + d2)
+            new_log_w = log_w1 + log_w2
+            
+            # Viterbi Max: Keep only the best score for this (O, D) state
+            if new_log_w > out.get(key, -math.inf):
+                out[key] = new_log_w
+                
+    return out
+
+
+def dp_tree_root_viterbi_fast(
+    root: TreeNode,
+    active_labels: List[FrozenSet[str]],
+    Reach: Dict[FrozenSet[str], Set[FrozenSet[str]]],
+    B_sets: Dict[TreeNode, Set[str]],
+) -> Dict[Tuple[int, int], float]:
+    """
+    Highly Optimized Viterbi DP Scorer.
+    
+    Optimizations:
+    1. Integer Indexing: Uses integer indices instead of frozensets for keys.
+    2. Pre-calculated Validity: Filters allowed labels per node before DP starts.
+    3. Reachability Caching: Converts Reach to adjacency lists of integers.
+    4. Memoization: Caches (NodeID, LabelIdx) -> ScoreTable.
+    """
+    # Increase recursion limit for deep trees
+    sys.setrecursionlimit(5000)
+
+    # --- PRE-COMPUTATION PHASE ---
+    
+    # Map labels to integers 0..K-1
+    label_to_idx = {L: i for i, L in enumerate(active_labels)}
+    num_labels = len(active_labels)
+    
+    # Convert Reach to integer adjacency list
+    # Reach_indices[p_idx] = [child_idx_1, child_idx_2, ...]
+    Reach_indices = {
+        label_to_idx[P]: [label_to_idx[Q] for Q in qs] 
+        for P, qs in Reach.items()
+    }
+    
+    # Pre-calculate valid labels for every node based on leaf observations
+    # node_id -> set(valid_label_indices)
+    node_valid_indices = {}
+    
+    def precompute_validity(v):
+        Bv = B_sets.get(v, set())
+        # A label L is valid for node v ONLY if B(v) is a subset of L
+        valid = [i for i, L in enumerate(active_labels) if Bv.issubset(L)]
+        node_valid_indices[id(v)] = set(valid)
+        for c in v.children: 
+            precompute_validity(c)
+            
+    precompute_validity(root)
+    
+    # Optimization: Cache B_sets counts for valid labels to avoid re-calculating
+    # node_id -> label_idx -> (o, d)
+    node_obs_counts = {}
+    def precompute_counts(v):
+        Bv = B_sets.get(v, set())
+        counts = {}
+        for i in node_valid_indices[id(v)]:
+            L = active_labels[i]
+            counts[i] = (len(L & Bv), len(L - Bv))
+        node_obs_counts[id(v)] = counts
+        for c in v.children: 
+            precompute_counts(c)
+            
+    precompute_counts(root)
+
+    # Memoization cache: (node_id, label_idx) -> Table
+    memo = {}
+
+    # --- RECURSION PHASE ---
+
+    def get_table(v: TreeNode, label_idx: int) -> Dict[Tuple[int, int], float]:
+        node_id = id(v)
+        
+        # 1. Validity Check (O(1) lookup)
+        if label_idx not in node_valid_indices[node_id]:
+            return {} # Impossible label for this node
+            
+        # 2. Memoization Check
+        memo_key = (node_id, label_idx)
+        if memo_key in memo:
+            return memo[memo_key]
+
+        # 3. Get Local Counts (O(1) lookup)
+        o_local, d_local = node_obs_counts[node_id][label_idx]
+
+        # --- Base Case: Leaf ---
+        if v.is_leaf():
+            # log(1.0) = 0.0
+            res = {(o_local, d_local): 0.0}
+            memo[memo_key] = res
+            return res
+
+        # --- Recursive Case: Internal Node ---
+        
+        # Get allowed child labels based on graph Reachability
+        allowed_child_idxs = Reach_indices.get(label_idx, [])
+        
+        # Start convolution accumulator
+        conv_scores = {(0, 0): 0.0}
+        
+        for child in v.children:
+            child_id = id(child)
+            
+            # Find best table for this child across all allowed Q
+            child_best_scores = {} # (o,d) -> max_score
+            
+            found_valid_child_label = False
+            
+            # Intersect Reachable labels with Valid labels for the child
+            # This effectively prunes the search space
+            valid_child_set = node_valid_indices[child_id]
+            
+            for child_lbl_idx in allowed_child_idxs:
+                if child_lbl_idx not in valid_child_set:
+                    continue
+                
+                # RECURSE
+                t_child = get_table(child, child_lbl_idx)
+                
+                if not t_child: continue
+                found_valid_child_label = True
+                
+                # Maximize over Q: Merge this Q's results into child_best_scores
+                for od, sc in t_child.items():
+                    if sc > child_best_scores.get(od, -math.inf):
+                        child_best_scores[od] = sc
+            
+            if not found_valid_child_label:
+                # This parent label is impossible because one child has no valid path
+                memo[memo_key] = {}
+                return {}
+            
+            # Convolve this child's best scores into the accumulator
+            conv_scores = sparse_convolve_2d_viterbi_fast_optimized(conv_scores, child_best_scores, 100)
+            if not conv_scores:
+                memo[memo_key] = {}
+                return {}
+
+        # 4. Add Local Counts
+        final_scores = {}
+        for (Oc, Dc), log_w in conv_scores.items():
+            final_scores[(Oc + o_local, Dc + d_local)] = log_w
+
+        memo[memo_key] = final_scores
+        return final_scores
+
+    # --- Root Calculation ---
+    # Root can be any label that is valid given its leaves
+    final_root_table = {}
+    root_valid = node_valid_indices[id(root)]
+    
+    for root_lbl_idx in root_valid:
+        t_root = get_table(root, root_lbl_idx)
+        for od, sc in t_root.items():
+            if sc > final_root_table.get(od, -math.inf):
+                final_root_table[od] = sc
+                
+    return final_root_table
+
+import sys
+import math
+
+# --- Helper for Beta-Binomial Log-Likelihood ---
+def calc_log_beta_score(L: FrozenSet[str], Bv: Set[str]) -> float:
+    """
+    Calculates log P(Data | Label) for a single node.
+    P ~ Beta(1,1) integrated out -> 1 / ((N+1) * Binom(N, O))
+    Simplifies to log-beta function.
+    """
+    O = len(L & Bv)
+    D = len(L - Bv)
+    # log Beta(O+1, D+1) = lgamma(O+1) + lgamma(D+1) - lgamma(O+D+2)
+    return math.lgamma(O + 1) + math.lgamma(D + 1) - math.lgamma(O + D + 2)
+
+def greedy_tree_log_likelihood(
+    root: TreeNode, 
+    active_labels: List[FrozenSet[str]], 
+    B_sets: Dict[TreeNode, Set[str]]
+) -> float:
+    """
+    Calculates tree likelihood using a GREEDY BOTTOM-UP approach (Beam Size = 1).
+    
+    Logic:
+      1. For leaves: Pick the single label L that maximizes local score. Lock it in.
+      2. For internals: Must pick an L that is a superset of all locked-in children.
+         Among valid Ls, pick the one maximizing local score. Lock it in.
+    
+    Returns:
+      - Total log-likelihood of the tree (or -inf if greedy path breaks connectivity).
+    """
+    # Increase recursion limit for deep trees
+    sys.setrecursionlimit(5000)
+
+    # Cache for the single chosen label for each node
+    # node_id -> chosen_label
+    chosen_labels = {}
+
+    def solve(v: TreeNode) -> float:
+        Bv = B_sets.get(v, set())
+
+        # --- 1. Process Children First (Bottom-Up) ---
+        children_score_sum = 0.0
+        child_constraints = set() # The union of all children's chosen potencies
+
+        for child in v.children:
+            s_child = solve(child)
+            if s_child == -math.inf:
+                return -math.inf # Propagate failure
+            
+            children_score_sum += s_child
+            
+            # Retrieve the child's locked decision
+            child_label = chosen_labels[id(child)]
+            child_constraints.update(child_label)
+
+        # --- 2. Greedy Decision for Current Node v ---
+        best_L = None
+        best_local_score = -math.inf
+
+        # We must choose an L that:
+        # a) Contains all observed data at v (Bv)
+        # b) Is a superset of the union of all children's chosen labels (child_constraints)
+        
+        # Optimization: Pre-check if child constraints are impossible (e.g. asking for types not in S)
+        # (Skipped here, assuming Z contains the root)
+
+        for L in active_labels:
+            # Check constraint (a)
+            if not Bv.issubset(L):
+                continue
+            
+            # Check constraint (b) - The Greedy Constraint
+            if not L.issuperset(child_constraints):
+                continue
+
+            # If valid, calculate local score
+            score = calc_log_beta_score(L, Bv)
+            
+            # Greedy: Maximize local score
+            if score > best_local_score:
+                best_local_score = score
+                best_L = L
+
+        # --- 3. Lock It In or Fail ---
+        if best_L is None:
+            # Dead End: No label exists in Z that covers the greedy choices of children
+            return -math.inf
+        
+        chosen_labels[id(v)] = best_L
+        
+        # Total score for this subtree = Local Score + Sum of Children's Total Scores
+        return best_local_score + children_score_sum
+
+    return solve(root)
+
+def score_structure_greedy(
+    struct: Structure,
+    trees: List[TreeNode],
+    leaf_type_maps: List[Dict[str,str]],
+    priors: Priors
+) -> float:
+    """
+    Fast scoring wrapper using the Greedy strategy.
+    """
+    # 1. Priors (Z and A)
+    logp = priors.log_prior_Z(struct.S, struct.Z_active)
+    if not math.isfinite(logp): return float("-inf")
+    
+    # Note: In Z-only search, A is often implicit/ignored, but if present, we score it.
+    # If unit_drop_edges=False (fully connected), log_prior_A might be constant or 0.
+    # We add it here for consistency.
+    logp += priors.log_prior_A(struct.Z_active, struct.A, unit_drop=struct.unit_drop)
+
+    total_logL = 0.0
+
+    # 2. Loop over trees
+    for root, leaf_map in zip(trees, leaf_type_maps):
+        B_sets = compute_B_sets(root, leaf_map)
+        
+        # Call the greedy solver
+        tree_score = greedy_tree_log_likelihood(
+            root, 
+            struct.labels_list, 
+            B_sets
+        )
+        
+        if tree_score == -math.inf:
+            return float("-inf")
+            
+        total_logL += tree_score
+
+    return logp + total_logL
+
+def score_structure_viterbi_no_edge_prior(
+    struct: Structure,
+    trees: List[TreeNode],
+    leaf_type_maps: List[Dict[str,str]],
+    priors: Priors,
+    prune_eps: float = 0.0 
+) -> Tuple[float, List[float]]:
+    """
+    Calculates Viterbi Score (Max Path) without edge priors.
+    Used for MCMC optimization in Phase 1.
+    """
+    logp = priors.log_prior_Z(struct.S, struct.Z_active)
+    if not math.isfinite(logp):
+        return float("-inf"), []
+
+    logLs = []
+    
+    for root, leaf_to_type in zip(trees, leaf_type_maps):
+        B_sets = compute_B_sets(root, leaf_to_type)
+        
+        # Use the OPTIMIZED FAST Viterbi DP
+        root_table = dp_tree_root_viterbi_fast(
+            root, struct.labels_list, struct.Reach, B_sets
+        )
+        
+        if not root_table:
+            return float("-inf"), []
+            
+        # Maximize over (O, D) at the root
+        best_tree_score = -math.inf
+        for (O, D), log_w in root_table.items():
+            # Add Beta term
+            log_beta = math.lgamma(O+1) + math.lgamma(D+1) - math.lgamma(O+D+2)
+            score = log_w + log_beta
+            if score > best_tree_score:
+                best_tree_score = score
+        
+        if not math.isfinite(best_tree_score):
+             return float("-inf"), []
+             
+        logLs.append(best_tree_score + logp)
+
+    return sum(logLs), logLs
+
+
 # ====== MCMC over Z (potency sets). A is deterministic (all admissible edges). ======
 # Initial mcmc map search (no fitch, pure random)
+# ====== MCMC over Z (potency sets). A is deterministic (all admissible edges). ======
+# def mcmc_map_search(
+#     S: List[str],
+#     trees: List["TreeNode"],
+#     leaf_type_maps: List[Dict[str,str]],
+#     priors: "Priors",
+#     *,
+#     unit_drop_edges: bool = True,
+#     fixed_k: Optional[int] = None,
+#     steps: int = 5000,
+#     burn_in: int = 1000,
+#     thin: int = 10,
+#     seed: int = 123,
+#     progress: bool = True,
+#     candidate_pool: Optional[List[FrozenSet[str]]] = None,
+#     block_swap_sizes: Tuple[int, ...] = (1, 2),
+#     fitch_probs: Dict[FrozenSet[str], float] = None
+# ) -> Tuple["Structure", float, Dict]:
+#     """
+#     Metropolis–Hastings sampler that explores Z; A is rebuilt deterministically.
+#     Target: log P(Z) + Sum_T [ max_L log P(T, L | Z) ] (Viterbi Score)
+#     """
+
+#     rng = random.Random(seed)
+
+#     # ----- This section is unchanged -----
+#     if candidate_pool is None:
+#         candidate_pool = collect_fitch_multis(S, trees, leaf_type_maps)
+#         if not candidate_pool:
+#             candidate_pool = [P for P in all_nonempty_subsets(S) if len(P) >= 2]
+#     pool_set = set(candidate_pool)
+
+#     def make_struct(Zset: Set[FrozenSet[str]]) -> "Structure":
+#         A = _full_edges_for_Z(Zset, unit_drop_edges)
+#         return Structure(S, Zset, A, unit_drop=unit_drop_edges)
+
+#     # ----- Initialization logic is unchanged -----
+#     singles = {frozenset([t]) for t in S}
+#     root = frozenset(S)
+#     if priors.potency_mode == "fixed_k" and fixed_k is not None:
+#         try:
+#             _, Z0 = init_progenitors_union_fitch(S, trees, leaf_type_maps, fixed_k)
+#             multis0 = [P for P in Z0 if len(P) >= 2]
+#             if len(multis0) != fixed_k:
+#                 raise RuntimeError("Fitch init gave wrong k")
+#         except Exception:
+#             Z0 = set(singles); Z0.add(root)
+#             available = [P for P in candidate_pool if P != root]
+#             if len(available) < max(0, fixed_k - 1):
+#                 raise RuntimeError("Not enough candidates to seed fixed-k")
+#             Z0.update(rng.sample(available, fixed_k - 1))
+#     else:
+#         Z0 = set(singles); Z0.add(root)
+#         sprinkle = min( max(0, len(candidate_pool)//20), 5 )
+#         if sprinkle:
+#             Z0.update(rng.sample(candidate_pool, sprinkle))
+    
+#     current = make_struct(Z0)
+    
+#     # --- CHANGED: Use Viterbi Scorer ---
+#     # curr_score, _ = score_structure_viterbi_no_edge_prior(current, trees, leaf_type_maps, priors)
+#     curr_score, _ = score_structure_greedy(current, trees, leaf_type_maps, priors)
+
+    
+#     if not math.isfinite(curr_score):
+#         if not math.isfinite(curr_score):
+#             raise RuntimeError("Could not find a finite-scoring starting point for MCMC.")
+
+
+#     # ----- proposal kernels (all symmetric) -----
+#     def propose_fixed_k_swap(Zset: Set[FrozenSet[str]]) -> Tuple[Optional[Set[FrozenSet[str]]], Optional[Dict]]:
+#         root = frozenset(S)
+#         acti = [P for P in Zset if len(P) >= 2]
+#         act = [P for P in acti if P!= root]
+#         ina = [P for P in candidate_pool if P not in Zset]
+#         if not act or not ina:
+#             return None, None
+
+#         m = 1
+
+#         # Weighted sampling for ADDING potencies
+#         add_weights = [fitch_probs.get(p, 0.001) for p in ina]
+#         add = random.choices(ina, weights=add_weights, k=m) if sum(add_weights) > 0 else rng.sample(ina, m)
+
+#         # Weighted sampling for DROPPING potencies
+#         drop_weights = [1.0 - fitch_probs.get(p, 0.999) for p in act]
+#         drop = random.choices(act, weights=drop_weights, k=m) if sum(drop_weights) > 0 else rng.sample(act, m)
+
+#         Z2 = set(Zset)
+#         Z2.difference_update(drop)
+#         Z2.update(add)
+    
+#         details = {'drop': drop, 'add': add}
+#         return Z2, details
+    
+#     def propose_toggle(Zset: Set[FrozenSet[str]]) -> Optional[Set[FrozenSet[str]]]:
+#         all_candidates = list(pool_set)
+#         weights = [fitch_probs.get(p, 0.001) for p in all_candidates]
+        
+#         P = random.choices(all_candidates, weights=weights, k=1)[0]
+        
+#         Z2 = set(Zset)
+#         if P in Z2:
+#             Z2.remove(P)
+#         else:
+#             Z2.add(P)
+#         return Z2
+
+#     # ----- MCMC loop -----
+#     kept_Z = []
+#     kept_scores = []
+#     all_scores_trace = [] 
+#     best_struct = current.clone()
+#     best_score = curr_score
+#     accepts = 0
+#     tried = 0
+    
+#     def pot_str(P): return "{" + ",".join(sorted(list(P))) + "}"
+
+#     iterator = range(steps)
+#     if progress:
+#         iterator = trange(steps, desc="MCMC (Z-only)", leave=True)
+
+#     all_scores_trace.append(curr_score)
+
+#     for it in iterator:
+#         Zprop = None
+#         proposal_details = None
+
+#         if priors.potency_mode == "fixed_k" and fixed_k is not None:
+#             Zprop, proposal_details = propose_fixed_k_swap(current.Z_active)
+#         else:
+#             Zprop = propose_toggle(current.Z_active)
+
+#         if Zprop is None:
+#             tried += 1
+#             if progress:
+#                 iterator.set_postfix({"logpost": f"{curr_score:.3f}", "acc": f"{(accepts/max(1,tried)):.2f}"})
+#             continue
+
+#         prop_struct = make_struct(Zprop)
+        
+#         # --- CHANGED: Use Viterbi Scorer ---
+#         # prop_score, _ = score_structure_viterbi_no_edge_prior(prop_struct, trees, leaf_type_maps, priors)
+#         prop_score, _ = score_structure_greedy(prop_struct, trees, leaf_type_maps, priors)
+        
+#         accept = False
+#         if math.isfinite(prop_score):
+#             delta = prop_score - curr_score
+#             accept = (delta >= 0) or (rng.random() < math.exp(delta))
+
+#         tried += 1
+#         if accept:
+#             accepts += 1
+            
+#             if proposal_details:
+#                 dropped_str = ", ".join(pot_str(p) for p in proposal_details['drop'])
+#                 added_str = ", ".join(pot_str(p) for p in proposal_details['add'])
+#                 # print(f"\n[Accepted Swap]: {dropped_str} -> {added_str} | New Score: {prop_score:.3f}")
+
+#             current = prop_struct
+#             curr_score = prop_score
+#             if curr_score > best_score:
+#                 best_struct = current.clone()
+#                 best_score = curr_score
+        
+#         all_scores_trace.append(curr_score)
+
+#         if it >= burn_in and ((it - burn_in) % thin == 0):
+#             kept_Z.append({P for P in current.Z_active if len(P) >= 2})
+#             kept_scores.append(curr_score)
+
+#         if progress:
+#             iterator.set_postfix({
+#                 "logpost": f"{curr_score:.3f}", 
+#                 "best": f"{best_score:.3f}", 
+#                 "acc": f"{(accepts/max(1,tried)):.2f}"
+#             })
+    
+#     # ----- Final stats calculation -----
+#     counts: Dict[FrozenSet[str], int] = {P: 0 for P in pool_set}
+#     for Zs in kept_Z:
+#         for P in Zs:
+#             if P in counts:
+#                 counts[P] += 1
+#     total_kept = max(1, len(kept_Z))
+#     inclusion = {P: counts[P] / total_kept for P in counts}
+
+#     stats = {
+#         "samples": kept_Z,
+#         "scores": kept_scores,
+#         "all_scores_trace": all_scores_trace, 
+#         "accept_rate": (accepts / max(1, tried)),
+#         "inclusion": inclusion,
+#     }
+
+#     return best_struct, best_score, stats
+
+
 def mcmc_map_search(
     S: List[str],
     trees: List["TreeNode"],
     leaf_type_maps: List[Dict[str,str]],
     priors: "Priors",
     *,
-    unit_drop_edges: bool = True,
+    unit_drop_edges: bool = False, # Usually False for Z-search (implicit A_full)
     fixed_k: Optional[int] = None,
     steps: int = 5000,
     burn_in: int = 1000,
@@ -1920,14 +2791,16 @@ def mcmc_map_search(
     fitch_probs: Dict[FrozenSet[str], float] = None
 ) -> Tuple["Structure", float, Dict]:
     """
-    Metropolis–Hastings sampler that explores Z; A is rebuilt deterministically as all admissible edges.
-    Target:  log P(Z) + sum_T log P(T | Z)    (edge prior removed)
-    Proposals are symmetric -> accept with min(1, exp(delta)).
+    Fast MCMC sampler using Greedy (Bottom-Up) Scoring.
+    
+    Logic:
+    - Proposes Z sets.
+    - Scores them using the 'Greedy' assumption (Child decides best label, Parent must adapt).
+    - Much faster than DP, but may reject valid Z sets if the greedy path hits a dead end.
     """
-
     rng = random.Random(seed)
 
-    # ----- This section is unchanged -----
+    # --- Initialization (Unchanged) ---
     if candidate_pool is None:
         candidate_pool = collect_fitch_multis(S, trees, leaf_type_maps)
         if not candidate_pool:
@@ -1935,230 +2808,158 @@ def mcmc_map_search(
     pool_set = set(candidate_pool)
 
     def make_struct(Zset: Set[FrozenSet[str]]) -> "Structure":
+        # In greedy search, Reach isn't strictly used for convolution, 
+        # but we need the Structure object for the signature.
+        # We assume A_full (fully connected) for Z-search.
         A = _full_edges_for_Z(Zset, unit_drop_edges)
         return Structure(S, Zset, A, unit_drop=unit_drop_edges)
 
-    # ----- Initialization logic is unchanged -----
+    # Seed Z
     singles = {frozenset([t]) for t in S}
     root = frozenset(S)
     if priors.potency_mode == "fixed_k" and fixed_k is not None:
         try:
             _, Z0 = init_progenitors_union_fitch(S, trees, leaf_type_maps, fixed_k)
             multis0 = [P for P in Z0 if len(P) >= 2]
-            if len(multis0) != fixed_k:
-                raise RuntimeError("Fitch init gave wrong k")
-        except Exception:
+            if len(multis0) != fixed_k: raise RuntimeError("Init fail")
+        except:
             Z0 = set(singles); Z0.add(root)
-            available = [P for P in candidate_pool if P != root]
-            if len(available) < max(0, fixed_k - 1):
-                raise RuntimeError("Not enough candidates to seed fixed-k")
-            Z0.update(rng.sample(available, fixed_k - 1))
+            avail = [P for P in candidate_pool if P != root]
+            if len(avail) < max(0, fixed_k-1): raise ValueError("Pool too small")
+            Z0.update(rng.sample(avail, fixed_k - 1))
     else:
         Z0 = set(singles); Z0.add(root)
-        sprinkle = min( max(0, len(candidate_pool)//20), 5 )
-        if sprinkle:
-            Z0.update(rng.sample(candidate_pool, sprinkle))
-    
+        if len(candidate_pool) > 0:
+            Z0.update(rng.sample(candidate_pool, min(5, len(candidate_pool))))
+
     current = make_struct(Z0)
-    curr_score, _ = score_structure_no_edge_prior(current, trees, leaf_type_maps, priors)
+    
+    # --- SCORE INITIAL STATE (Greedy) ---
+    curr_score = score_structure_greedy(current, trees, leaf_type_maps, priors)
+    
     if not math.isfinite(curr_score):
-        # for _ in range(20):
-        #     # Fallback logic is unchanged
-        #     if priors.potency_mode == "fixed_k" and fixed_k is not None:
-        #         Z0 = set(singles); Z0.add(root)
-        #         Z0.update(rng.sample([P for P in candidate_pool if P != root], fixed_k - 1))
-        #     else:
-        #         Z0 = set(singles); Z0.add(root)
-        #         Z0.update(rng.sample(candidate_pool, min(5, len(candidate_pool))))
-        #     current = make_struct(Z0)
-        #     curr_score, _ = score_structure_no_edge_prior(current, trees, leaf_type_maps, priors)
-        #     if math.isfinite(curr_score):
-        #         break
-        if not math.isfinite(curr_score):
-            raise RuntimeError("Could not find a finite-scoring starting point for MCMC.")
+        # Fallback: Try 20 random seeds to find a valid starting point
+        # Because Greedy is brittle, initialization is harder.
+        found = False
+        for _ in range(20):
+            if priors.potency_mode == "fixed_k":
+                Z0 = set(singles); Z0.add(root)
+                Z0.update(rng.sample([P for P in candidate_pool if P!=root], fixed_k-1))
+            else:
+                Z0 = set(singles); Z0.add(root)
+                Z0.update(rng.sample(candidate_pool, 3))
+            
+            current = make_struct(Z0)
+            curr_score = score_structure_greedy(current, trees, leaf_type_maps, priors)
+            if math.isfinite(curr_score):
+                found = True
+                break
+        if not found:
+            raise RuntimeError("Could not find a finite-scoring starting point using Greedy Scoring.")
 
-
-    # ----- proposal kernels (all symmetric) -----
-    def propose_fixed_k_swap(Zset: Set[FrozenSet[str]]) -> Tuple[Optional[Set[FrozenSet[str]]], Optional[Dict]]:
-        root = frozenset(S)
-        acti = [P for P in Zset if len(P) >= 2]
-        act = [P for P in acti if P!= root]
+    # --- Helper: Proposals ---
+    def propose_fixed_k_swap(Zset):
+        acti = [P for P in Zset if len(P) >= 2 and P != root]
         ina = [P for P in candidate_pool if P not in Zset]
-        if not act or not ina:
-            return None, None
-
-        # m = rng.choice(block_swap_sizes)
-        # m = max(1, min(m, len(act), len(ina)))
-        m = 1
-
-        # Weighted sampling for ADDING potencies
-        add_weights = [fitch_probs.get(p, 0.001) for p in ina]
-        add = random.choices(ina, weights=add_weights, k=m) if sum(add_weights) > 0 else rng.sample(ina, m)
-
-        # Weighted sampling for DROPPING potencies
-        drop_weights = [1.0 - fitch_probs.get(p, 0.999) for p in act]
-        drop = random.choices(act, weights=drop_weights, k=m) if sum(drop_weights) > 0 else rng.sample(act, m)
-
+        if not acti or not ina: return None, None
+        
+        # Weighted Swap
+        drop = random.choices(acti, weights=[1.0-fitch_probs.get(p, 0.9) for p in acti], k=1)
+        add = random.choices(ina, weights=[fitch_probs.get(p, 0.1) for p in ina], k=1)
+        
         Z2 = set(Zset)
-
-        # <<<--- THIS IS THE FIX --->>>
-        # Use set operations which are robust to duplicates in the 'drop' and 'add' lists.
         Z2.difference_update(drop)
         Z2.update(add)
-    
-        details = {'drop': drop, 'add': add}
-        return Z2, details
-    
-    # This function will go INSIDE mcmc_map_search
-    def propose_jaccard_swap(Zset: Set[FrozenSet[str]]) -> Tuple[Optional[Set[FrozenSet[str]]], Optional[Dict]]:
-        """
-        Proposes swapping one active potency (excluding the root) with an inactive one.
-        The inactive potency is chosen with a probability weighted by the inverse of
-        the Jaccard distance to the dropped potency.
-        """
-        act = [P for P in Zset if len(P) >= 2]
-        ina = [P for P in candidate_pool if P not in Zset]
-        root = frozenset(S)
+        return Z2, {'drop': drop, 'add': add}
 
-        # i) Create a list of candidates to drop, excluding the root potency
-        drop_candidates = [P for P in act if P != root]
-
-        if not drop_candidates or not ina:
-            return None, None
-
-        # Pick one potency to drop uniformly at random from the candidates
-        P_drop = rng.choice(drop_candidates)
-
-        # ii) Calculate weights for the inactive candidates
-        # The weight is the inverse of the Jaccard distance.
-        # A small epsilon prevents division by zero if the distance is 0.
-        epsilon = 1e-6
-        jaccard_weights = [1.0 / (jaccard_distance(P_drop, p_add) + epsilon) for p_add in ina]
-
-        # Choose the potency to add based on the calculated weights
-        # random.choices returns a list, so we take the first element
-        P_add = random.choices(ina, weights=jaccard_weights, k=1)[0]
-        
-        # Perform the swap
+    def propose_toggle(Zset):
+        P = rng.choice(list(pool_set))
         Z2 = set(Zset)
-        Z2.remove(P_drop)
-        Z2.add(P_add)
-
-        # Prepare details for logging
-        details = {'drop': [P_drop], 'add': [P_add]}
-        return Z2, details
-    
-
-    def propose_toggle(Zset: Set[FrozenSet[str]]) -> Optional[Set[FrozenSet[str]]]:
-        # Toggling a potency "on" should favor high-probability candidates
-        # Toggling "off" should favor low-probability candidates
-        # For simplicity, we'll just use the weights to pick a candidate to consider toggling.
-        all_candidates = list(pool_set)
-        weights = [fitch_probs.get(p, 0.001) for p in all_candidates]
-        
-        P = random.choices(all_candidates, weights=weights, k=1)[0]
-        
-        Z2 = set(Zset)
-        if P in Z2:
-            Z2.remove(P)
-        else:
-            Z2.add(P)
+        if P in Z2: Z2.remove(P)
+        else: Z2.add(P)
         return Z2
 
-    # ----- MCMC loop -----
-    kept_Z = []
-    kept_scores = []
-    all_scores_trace = [] # <--- **ADDED**: List to store score at EVERY iteration
+    # --- MCMC Loop ---
     best_struct = current.clone()
     best_score = curr_score
+    
+    kept_Z = []
+    kept_scores = []
+    all_scores_trace = [curr_score]
     accepts = 0
     tried = 0
     
-    # Helper for pretty printing
     def pot_str(P): return "{" + ",".join(sorted(list(P))) + "}"
 
     iterator = range(steps)
     if progress:
-        iterator = trange(steps, desc="MCMC (Z-only)", leave=True)
-
-    all_scores_trace.append(curr_score)
+        iterator = trange(steps, desc="MCMC (Greedy)", leave=True)
 
     for it in iterator:
         Zprop = None
-        # <<<--- CHANGE 2: Add a variable to store proposal details --->>>
-        proposal_details = None
-
-        if priors.potency_mode == "fixed_k" and fixed_k is not None:
-            # <<<--- CHANGE 3: Unpack the details from the proposal call --->>>
-            Zprop, proposal_details = propose_fixed_k_swap(current.Z_active)
-            # Zprop, proposal_details = propose_jaccard_swap(current.Z_active)
-
-            # if proposal_details:
-            #     dropped_str = ", ".join(pot_str(p) for p in proposal_details['drop'])
-            #     added_str = ", ".join(pot_str(p) for p in proposal_details['add'])
-            #     print(f"\n[Proposing Swap]: {dropped_str} -> {added_str}")
+        details = None
+        
+        if priors.potency_mode == "fixed_k":
+            Zprop, details = propose_fixed_k_swap(current.Z_active)
         else:
             Zprop = propose_toggle(current.Z_active)
 
         if Zprop is None:
             tried += 1
-            if progress:
-                iterator.set_postfix({"logpost": f"{curr_score:.3f}", "acc": f"{(accepts/max(1,tried)):.2f}"})
             continue
 
         prop_struct = make_struct(Zprop)
-        prop_score, _ = score_structure_no_edge_prior(prop_struct, trees, leaf_type_maps, priors)
         
+        # --- SCORE PROPOSAL (Greedy) ---
+        prop_score = score_structure_greedy(prop_struct, trees, leaf_type_maps, priors)
+
+        # --- Accept/Reject ---
         accept = False
         if math.isfinite(prop_score):
             delta = prop_score - curr_score
-            accept = (delta >= 0) or (rng.random() < math.exp(delta))
-
+            # Standard Metropolis rule
+            if delta >= 0 or rng.random() < math.exp(delta):
+                accept = True
+        
         tried += 1
         if accept:
             accepts += 1
-            
-            # <<<--- CHANGE 4: Add the logging logic for accepted swaps --->>>
-            if proposal_details:
-                dropped_str = ", ".join(pot_str(p) for p in proposal_details['drop'])
-                added_str = ", ".join(pot_str(p) for p in proposal_details['add'])
-                # Using print() will show the message on a new line below the progress bar
-                # print(f"\n[Accepted Swap]: {dropped_str} -> {added_str} | New Score: {prop_score:.3f}")
-
             current = prop_struct
             curr_score = prop_score
+            
             if curr_score > best_score:
-                best_struct = current.clone()
                 best_score = curr_score
-        
+                best_struct = current.clone()
+            
+            if details and progress:
+                 # Optional: Print swap details occasionally
+                 pass
+
         all_scores_trace.append(curr_score)
 
-        if it >= burn_in and ((it - burn_in) % thin == 0):
+        # Collect samples
+        if it >= burn_in and (it - burn_in) % thin == 0:
             kept_Z.append({P for P in current.Z_active if len(P) >= 2})
             kept_scores.append(curr_score)
-
+            
         if progress:
-            iterator.set_postfix({
-                "logpost": f"{curr_score:.3f}",
-                "best": f"{best_score:.3f}",
-                "acc": f"{(accepts/max(1,tried)):.2f}"
-            })
-    
-    # ----- Final stats calculation (unchanged) -----
-    counts: Dict[FrozenSet[str], int] = {P: 0 for P in pool_set}
+            iterator.set_postfix({"score": f"{curr_score:.1f}", "best": f"{best_score:.1f}", "acc": f"{accepts/tried:.2f}"})
+
+    # --- Final Stats ---
+    counts = {P: 0 for P in pool_set}
     for Zs in kept_Z:
         for P in Zs:
-            if P in counts:
-                counts[P] += 1
+            if P in counts: counts[P] += 1
+    
     total_kept = max(1, len(kept_Z))
     inclusion = {P: counts[P] / total_kept for P in counts}
-
+    
     stats = {
         "samples": kept_Z,
         "scores": kept_scores,
-        "all_scores_trace": all_scores_trace, # <--- **ADDED**: The full trace
-        "accept_rate": (accepts / max(1, tried)),
-        "inclusion": inclusion,
+        "all_scores_trace": all_scores_trace,
+        "accept_rate": accepts / max(1, tried),
+        "inclusion": inclusion
     }
 
     return best_struct, best_score, stats
@@ -4029,23 +4830,23 @@ if __name__ == "__main__":
         type_nums=[6],
         maps_start=2,
         maps_end=6,
-        cells_list=[50],
-        iters = 10,
+        cells_list=[100],
+        iters = 100,
         restarts = 7,
         fixed_k = 5,
-        out_csv="checking.csv",
+        out_csv="viterbi_fast_6_2_6_100.csv",
         log_dir="prac",
         tree_kind="graph"   # or "bin_trees" or "graph"
     )
-    # main_multi_type(
-    #     type_nums=[10],
-    #     maps_start=2,
-    #     maps_end=6,
-    #     cells_list=[50],
-    #     iters = 10,
-    #     restarts = 7,
-    #     fixed_k = 9,
-    #     out_csv="viterbi_updated_10_2_6_50.csv",
-    #     log_dir="prac",
-    #     tree_kind="graph"   # or "bin_trees" or "graph"
-    # )
+    main_multi_type(
+        type_nums=[10],
+        maps_start=2,
+        maps_end=6,
+        cells_list=[50],
+        iters = 100,
+        restarts = 7,
+        fixed_k = 9,
+        out_csv="viterbi_fast_10_2_6_50.csv",
+        log_dir="prac",
+        tree_kind="graph"   # or "bin_trees" or "graph"
+    )
