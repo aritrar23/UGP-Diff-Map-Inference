@@ -13,6 +13,8 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # MUST BE CALLED BEFORE importing pyplot
 import matplotlib.pyplot as plt
+import networkx as nx
+import matplotlib.colors
 import arviz as az
 
 #!/usr/bin/env python3
@@ -4148,186 +4150,130 @@ def calculate_metrics_and_plots(
     return entropy, total_support_C
 
 
-def process_case( # This function REPLACES your old `process_case`
-    map_idx: int, 
-    type_num: int, 
-    cells_n: int,
-    priors: "Priors", 
-    iters: int, 
-    restarts: int,  # This is now n_chains for Phase 1
-    log_dir: Optional[str] = None,
-    tree_kind: str = "graph", 
-    n_jobs: Optional[int] = None,
-    unit_drop_edges: bool = False # Make sure this is passed
-):
+def plot_final_structure(struct: Structure, output_path: str):
     """
-    Processes a single simulation case using the 
-    "MCMC-Z -> Viterbi Flow -> MST" hybrid algorithm.
+    Generates a hierarchical DAG plot of the inferred structure using NetworkX and Matplotlib.
+    Nodes are colored by potency size (cardinality).
     """
+    print(f"\n=== Generating Structure Plot: {output_path} ===")
     
-    # --- 0. Setup ---
-    print(f"\n{'='*80}")
-    print(f"=== Processing Case: type_{type_num}, map {map_idx:04d}, cells_{cells_n} ===")
-    print(f"=== Sampler: MCMC-Z (Phase 1) + Viterbi Flow (Phase 2) ===")
-    print(f"=== k={priors.fixed_k}, iters={iters}, chains={restarts} ===")
-    print(f"{'='*80}")
+    # 1. Create Graph
+    G = nx.DiGraph()
+    
+    # Add Nodes (frozensets)
+    G.add_nodes_from(struct.Z_active)
+    
+    # Add Edges (only where A[e] == 1)
+    edges = [e for e, v in struct.A.items() if v == 1]
+    G.add_edges_from(edges)
+    
+    # 2. Prepare Attributes (Labels and Counts)
+    node_counts_map = {n: len(n) for n in G.nodes()}
+    
+    # Format labels: remove brackets, split elements by newlines for compactness
+    node_labels_map = {}
+    for n in G.nodes():
+        elements = sorted(list(n))
+        node_labels_map[n] = '\n'.join(elements)
 
-    fate_map_path, idx4 = build_fate_map_path(map_idx, type_num, tree_kind=tree_kind)
-    tree_paths, meta_paths = build_tree_and_meta_paths(map_idx, type_num, cells_n, tree_kind=tree_kind)
+    # 3. Hierarchical Layout (y = cardinality)
+    pos = {}
+    levels = {}
+    for node, count in node_counts_map.items():
+        levels.setdefault(count, []).append(node)
 
-    trees, leaf_type_maps, S = read_trees_and_maps(tree_paths, meta_paths)
-    all_B_sets = [compute_B_sets(tree, ltm) for tree, ltm in zip(trees, leaf_type_maps)]
+    x_spacing = 2.0
+    y_spacing = 2.0
 
-    # --- Ground Truth Scoring (Unchanged) ---
-    ground_truth_sets, gt_loss, gt_Z_active, gt_edges = score_given_map_and_trees(
-        fate_map_path, trees, meta_paths,
-        fixed_k=priors.fixed_k,
-        unit_drop_edges=unit_drop_edges
+    sorted_counts = sorted(levels.keys())
+    for count in sorted_counts:
+        nodes_at_level = sorted(levels[count], key=lambda x: tuple(sorted(list(x))))
+        num_nodes = len(nodes_at_level)
+        x_start = - (num_nodes - 1) * x_spacing / 2.0
+        for i, node in enumerate(nodes_at_level):
+            y = count * y_spacing
+            x = x_start + i * x_spacing
+            pos[node] = (x, y)
+
+    # 4. Plotting Setup
+    if not node_counts_map: 
+        print("Warning: Empty graph, skipping plot.")
+        return
+
+    color_values = [node_counts_map[node] for node in G.nodes()]
+    max_potency = max(color_values)
+    min_potency = min(color_values)
+    num_levels = max(1, max_potency - min_potency + 1)
+    
+    # Create colormap
+    cmap = plt.get_cmap('YlOrRd', num_levels)
+
+    plt.figure(figsize=(20, 16))
+    
+    # Draw Nodes
+    nx.draw_networkx_nodes(
+        G, pos,
+        node_color=color_values,
+        cmap=cmap,
+        vmin=min_potency,
+        vmax=max_potency,
+        node_size=8000,
+        edgecolors='black',
+        linewidths=0.5
     )
     
-    # --- 1. Prepare for MCMC (Unchanged) ---
-    print_fitch_potency_probs_once(
-        S, trees, leaf_type_maps,
-        header=f"\n[Potency ranking] type_{type_num}, map {idx4}, cells_{cells_n}"
-    )
-    pool = collect_fitch_multis(S, trees, leaf_type_maps)
-    fitch_probs_list = compute_fitch_potency_probs(S, trees, leaf_type_maps)
-    fitch_probs_dict = {p: prob for p, prob in fitch_probs_list}
-
-    # --- 2. Phase 1: Run MCMC for Z_map ---
-    # This uses your *existing* Z-only MCMC function
-    print("\n--- Phase 1: Running MCMC to find best Potency Sets (Z) ---")
-    bestF_Z, best_score_Z, all_stats_Z = run_mcmc_only_Z_parallel(
-        S=S,
-        trees=trees,
-        leaf_type_maps=leaf_type_maps,
-        # all_B_sets=all_B_sets,
-        priors=priors,
-        unit_drop_edges=unit_drop_edges, # Pass this along
-        fixed_k=priors.fixed_k if priors.potency_mode == "fixed_k" else None,
-        steps=iters,
-        burn_in=(iters*15)//100,
-        thin=10,
-        base_seed=123 + map_idx + cells_n,
-        candidate_pool=pool,
-        block_swap_sizes=(1,), # Use (1,) for faster, simpler swaps
-        n_chains=restarts,
-        fitch_probs = fitch_probs_dict
+    # Draw Edges
+    nx.draw_networkx_edges(
+        G, pos,
+        arrowstyle='-|>',
+        arrowsize=25,
+        edge_color='dimgrey',
+        width=1.5,
+        node_size=8000
     )
 
-    if all_stats_Z and log_dir:
-        plot_mcmc_traces(
-            all_stats=all_stats_Z,
-            title=f"MCMC Trace for Potency Sets (Z) - Map {idx4}, Cells {cells_n}",
-            output_path=os.path.join(log_dir, f"trace_Z_type{type_num}_{idx4}_cells{cells_n}.png")
+    # 5. Draw Labels
+    # Identify topmost nodes for white text (usually darker background color)
+    max_count = max(node_counts_map.values())
+    top_nodes = [n for n, c in node_counts_map.items() if c == max_count]
+
+    # Draw all labels in black first
+    nx.draw_networkx_labels(
+        G, pos,
+        labels=node_labels_map,
+        font_size=8,
+        font_weight='bold',
+        font_color='black'
+    )
+
+    # Overdraw labels for topmost node(s) in white for contrast
+    for node in top_nodes:
+        nx.draw_networkx_labels(
+            G, pos,
+            labels={node: node_labels_map[node]},
+            font_size=8,
+            font_weight='bold',
+            font_color='white'
         )
 
-    if bestF_Z is None:
-        print("[ERROR] MCMC-Z Phase 1 failed to find a structure.")
-        raise RuntimeError("MCMC-Z failed")
-        
-    Z_map = bestF_Z.Z_active
-    print(f"--- Phase 1 Complete. Best Z-only score: {best_score_Z:.4f} ---")
-
-    # --- 3. Phase 2: Create F_full ---
-    print("\n--- Phase 2: Building fully-connected graph (F_full) ---")
-    A_full = _full_edges_for_Z(Z_map, unit_drop_edges)
-    F_full = Structure(S, Z_map, A_full, unit_drop_edges)
-    print(f"F_full has {len(Z_map)} nodes and {len(A_full)} admissible edges.")
-
-    # --- 4. Phase 3: Calculate Viterbi Flow ---
-    viterbi_flow = calculate_viterbi_flow(
-        trees, F_full, all_B_sets, leaf_type_maps
-    )
+    # 6. Colorbar
+    boundaries = np.arange(min_potency, max_potency + 2) - 0.5
+    norm = matplotlib.colors.BoundaryNorm(boundaries, cmap.N)
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array(color_values)
+    ticks = np.arange(min_potency, max_potency + 1)
     
-    if not viterbi_flow:
-        print("[ERROR] Viterbi flow calculation returned empty. Cannot build A_map.")
-        raise RuntimeError("Viterbi flow failed")
+    cbar = plt.colorbar(sm, ax=plt.gca(), shrink=0.8, ticks=ticks)
+    cbar.set_label('Cardinality (Number of Potencies)', rotation=270, labelpad=25, fontsize=14, weight='bold')
+    cbar.ax.tick_params(labelsize=12)
 
-    # --- 5. Phase 4: Select A_map ---
-    S_nodes = {frozenset([t]) for t in S} # Get the set of singletons
-    A_map_final = build_A_map_from_flow(
-        viterbi_flow, 
-        Z_map,
-        S_nodes, # <-- ADD THIS ARGUMENT
-        z_score_threshold=1.5 # You can tune this
-    )
+    plt.title(f'Inferred differentiation Map', size=25, pad=20, weight='bold')
+    plt.axis('off')
     
-    # --- 6. Final Scoring and Reporting ---
-    print("\n--- Final Scoring ---")
-    bestF_final = Structure(S, Z_map, A_map_final, unit_drop_edges)
+    plt.savefig(output_path, bbox_inches='tight', dpi=150)
+    plt.close()
+    print(f"✅ Saved plot to {output_path}")
     
-    # Score this final structure
-    # final_logp_Z = priors.log_prior_Z(S, Z_map)
-    # final_num_admiss = len(A_full) # Num admissible edges for this Z
-    # final_logp_A = priors.log_prior_A(
-    #     Z_map, A_map_final, unit_drop_edges, final_num_admiss
-    # )
-
-    # final_log_L = get_log_likelihood(
-    #     bestF_final, trees, leaf_type_maps, all_B_sets
-    # )
-    
-    # if not math.isfinite(final_logp_Z): final_logp_Z = 0 # Handle -inf prior
-    # if not math.isfinite(final_logp_A): final_logp_A = 0 # Handle -inf prior
-    
-    # best_score_final = final_logp_Z + final_logp_A + final_log_L
-
-    best_score_final, _ = score_structure(bestF_final, trees, leaf_type_maps, priors)
-
-    # print(f"Final Log P(Z): {final_logp_Z:.4f}")
-    # print(f"Final Log P(A|Z): {final_logp_A:.4f} ({len(A_map_final)} edges)")
-    print(f"Final score (with edges): {best_score_final:.4f}")
-    
-    # print(f"\n=== BEST MAP (Hybrid) for type_{type_num}, map {idx4}, cells_{cells_n} ===")
-    # multi_sorted = sorted([P for P in bestF_final.Z_active if len(P) >= 2],
-    #                       key=lambda x: (len(x), tuple(sorted(list(x)))))
-    # print("Active potencies (multi-type):")
-    # for P in multi_sorted: print("  ", pot_str(P))
-    
-    # print("\nEdges:")
-    # edges = sorted([e for e, v in bestF_final.A.items() if v == 1],
-    #                key=lambda e: (len(e[0]), tuple(sorted(list(e[0]))), pot_str(e[1])))
-    # for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
-
-    print("\nScores:")
-    print(f"  Log Posterior (Pred): {best_score_final:.6f}")
-    print(f"  Log Posterior (GT):   {gt_loss:.6f}")
-
-    # --- Potency Set Metrics ---
-    predicted_sets = {p for p in bestF_final.Z_active if len(p) > 1}
-    pretty_print_sets("Predicted Sets", predicted_sets)
-    pretty_print_sets("Ground Truth Sets", ground_truth_sets)
-    print("\nPredicted edges")
-    edges = sorted([e for e, v in bestF_final.A.items() if v == 1],
-                   key=lambda e: (len(e[0]), tuple(sorted(list(e[0]))), pot_str(e[1])))
-    for (u, v) in sorted(edges, key=lambda e: (len(e[0]), tuple(sorted(e[0])), len(e[1]), tuple(sorted(e[1])))):
-        print(f"{sorted(list(u))} -> {sorted(list(v))}")
-    # for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
-    print("\n=== Ground Truth Directed Edges ===")
-    for (u, v) in sorted(gt_edges, key=lambda e: (len(e[0]), tuple(sorted(e[0])), len(e[1]), tuple(sorted(e[1])))):
-        print(f"{sorted(list(u))} -> {sorted(list(v))}")
-    jd = jaccard_distance(predicted_sets, ground_truth_sets)
-    print(f"Jaccard Distance (Potency Sets): {jd:.6f}")
-
-    # --- Edge Set Metrics ---
-    pred_edges = edges_from_A(bestF_final.A)
-    edge_jacc = jaccard_distance_edges(pred_edges, gt_edges)
-    
-    nodes_union = gt_Z_active | set(bestF_final.Z_active)
-    im_d, im_s = ipsen_mikhailov_similarity(
-        nodes_union = nodes_union,
-        edges1 = pred_edges,
-        edges2 = gt_edges,
-        gamma = 0.08,
-    )
-
-    print("\n=== Edge-set Metrics ===")
-    print(f"Jaccard distance (edges): {edge_jacc:.6f}")
-    print(f"Ipsen–Mikhailov distance: {im_d:.6f}")
-    print(f"Ipsen–Mikhailov similarity: {im_s:.6f}")
-
-    return jd, gt_loss, best_score_final, edge_jacc, im_s
 
 def main_tls(
     input_file_list: str, # Path to the file listing tree/meta pairs
@@ -4585,6 +4531,14 @@ def main_tls(
         )
         
         print(f"Validation Metrics -> Entropy: {entropy:.4f}, Support: {support}")
+
+        # --- Generate Structure Plot ---
+        # Define output filename
+        plot_filename = f"tls_structure.png"
+        plot_path = os.path.join(log_dir if log_dir else ".", plot_filename)
+        
+        # Call the new function
+        plot_final_structure(bestF_final, plot_path)
         
         with open(out_csv, "w", newline="") as f:
              writer = csv.writer(f)
@@ -4610,5 +4564,5 @@ if __name__ == "__main__":
         restarts=7,
         fixed_k=7,
         out_csv="tls_7_viterbi.csv",
-        log_dir="tls_run_logs_viterbi"
+        log_dir="tls_run_logs_viterbi_7"
     )

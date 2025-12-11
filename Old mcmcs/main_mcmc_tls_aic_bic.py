@@ -606,42 +606,26 @@ class TreeNode:
 
     def __repr__(self):
         return f"Leaf({self.name})" if self.is_leaf() else f"Node({self.name}, k={len(self.children)})"
-
-
-# def parse_newick(newick: str) -> TreeNode:
-#     s = newick.strip()
-#     if not s.endswith(";"): raise ValueError("Newick must end with ';'")
-#     s = s[:-1]; i = 0
-#     def parse() -> TreeNode:
-#         nonlocal i, s
-#         if i >= len(s): raise ValueError("Unexpected end")
-#         if s[i] == '(':
-#             i += 1
-#             node = TreeNode()
-#             while True:
-#                 node.add_child(parse())
-#                 if i >= len(s): raise ValueError("Unbalanced")
-#                 if s[i] == ',':
-#                     i += 1; continue
-#                 elif s[i] == ')':
-#                     i += 1; break
-#                 else: raise ValueError(f"Unexpected char: {s[i]} at {i}")
-#             j = i
-#             while j < len(s) and s[j] not in ',()': j += 1
-#             name = s[i:j].strip()
-#             if name: node.name = name
-#             i = j
-#             return node
-#         else:
-#             j = i
-#             while j < len(s) and s[j] not in ',()': j += 1
-#             name = s[i:j].strip()
-#             if not name: raise ValueError("Leaf without name")
-#             i = j
-#             return TreeNode(name=name)
-#     root = parse()
-#     if i != len(s): raise ValueError(f"Trailing characters: '{s[i:]}'")
-#     return root
+    
+def parse_input_file_list(path: str) -> Tuple[List[str], List[str]]:
+    """Reads a file where each line is 'tree_path\\tmeta_path'."""
+    tree_paths = []
+    meta_paths = []
+    with open(path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or '\t' not in line:
+                continue # Skip empty or invalid lines
+            try:
+                tree_p, meta_p = line.split('\t', 1)
+                tree_paths.append(tree_p.strip())
+                meta_paths.append(meta_p.strip())
+            except ValueError:
+                print(f"Skipping malformed line: {line}")
+    if not tree_paths:
+         raise ValueError(f"No valid tree/meta path pairs found in {path}")
+    # print(f"Read {len(tree_paths)} tree/meta pairs from {path}")
+    return tree_paths, meta_paths
 
 def iter_edges(root: TreeNode) -> Iterable[Tuple[TreeNode, TreeNode]]:
     """Yield (parent, child) for every directed edge in the rooted tree."""
@@ -661,26 +645,46 @@ def count_edges(root: TreeNode) -> int:
 # -------------------------
 # Union-only Fitch labeling
 # -------------------------
+#Modifed for handling TLS
 def assign_union_potency(root: TreeNode, leaf_type_map: Dict[str, str]) -> Set[str]:
     """
     Post-order union-only labeling. Sets `node.potency` for every node (as a Python set).
     For leaves, looks up leaf_type_map[node.name] to get the leaf cell type.
+    **If a leaf name from the tree is not found in the map (e.g., due to filtering),
+    it assigns an empty potency set {}.**
     Returns the potency set at `root`.
     """
-    if root.is_leaf():
-        if root.name is None:
-            raise KeyError("Leaf has no .name; cannot map to leaf_type_map")
-        if root.name not in leaf_type_map:
-            raise KeyError(f"Leaf name '{root.name}' not found in leaf_type_map")
-        root.potency = {leaf_type_map[root.name]}
+    # --- Check for internal node first ---
+    if not root.is_leaf():
+        union_set: Set[str] = set()
+        for child in root.children:
+            # Recursively call on children
+            child_set = assign_union_potency(child, leaf_type_map)
+            union_set |= child_set
+        root.potency = union_set
         return root.potency
 
-    union_set: Set[str] = set()
-    for child in root.children:
-        child_set = assign_union_potency(child, leaf_type_map)
-        union_set |= child_set
-    root.potency = union_set
-    return root.potency
+    # --- Handle Leaf Node ---
+    else:
+        if root.name is None:
+            # Still raise error if leaf node lacks a name attribute entirely
+            raise ValueError("Leaf node encountered with no name attribute.")
+
+        # --- MODIFIED LOGIC: Use .get() for robustness ---
+        leaf_type = leaf_type_map.get(root.name) # Returns None if not found
+
+        if leaf_type is None:
+            # Leaf name exists in tree but was not in the filtered map.
+            # Assign an empty set, effectively ignoring this leaf for Fitch.
+            root.potency = set()
+            # Optional: Add a warning if you want to see which leaves are ignored
+            # print(f"Warning: Leaf '{root.name}' not in map (likely filtered). Assigning empty potency.")
+        else:
+            # Leaf name was found in the map, assign its type as potency.
+            root.potency = {leaf_type}
+        # ------------------------------------------------
+
+        return root.potency
 
 
 # -------------------------
@@ -1887,6 +1891,43 @@ def score_structure_no_edge_prior(struct: Structure,
     # print(f"=== FINISHED SCORE_STRUCTURE | Total Log Posterior: {sum(logLs)} ===")
     # print("="*50 + "\n")
     return sum(logLs), logLs
+
+
+def get_log_likelihood(
+    struct: Structure,
+    trees: List[TreeNode],
+    leaf_type_maps: List[Dict[str,str]],
+    all_B_sets: List[Dict[TreeNode, Set[str]]],
+    prune_eps: float = 0.0
+) -> float:
+    """
+    Calculates ONLY the log-likelihood part of the score: Sum[ log P(T|F) ].
+    This is the 'L' term needed for AIC/BIC.
+    """
+    total_logL = 0.0
+    for root, leaf_to_type, B_sets in zip(trees, leaf_type_maps, all_B_sets):
+        # B_sets = compute_B_sets(root, leaf_to_type) # Already precomputed
+        root_labels = B_sets.get(root, set())
+        
+        if not root_labels:
+            # This tree has no mapped leaves, logL = log(1) = 0
+            continue 
+
+        C_log = dp_tree_root_table(root, struct.labels_list, struct.Reach, B_sets, prune_eps=prune_eps)
+
+        if not C_log:
+            # If the DP table is empty, this structure is impossible for this tree.
+            return -math.inf 
+
+        tree_logL = tree_marginal_from_root_table_log(C_log)
+        
+        if not math.isfinite(tree_logL):
+            # If the final log-likelihood is not a valid number, abort.
+            return -math.inf 
+        
+        total_logL += tree_logL
+    
+    return total_logL
 
 
 # deterministically build ALL admissible edges for a given Z (keeps MCMC symmetric/easy)
@@ -3293,6 +3334,103 @@ def lns_destroy_repair(current: "Structure",
 
     return best_st
 
+def read_leaf_type_map_tls(path: str) -> Dict[str, str]:
+    """
+    Read a leaf->type mapping from a file. Handles JSON and TSV/CSV/TXT.
+
+    For TSV/CSV/TXT (like the multi-column example):
+    - Assumes the second column is the leaf identifier (cell barcode).
+    - Assumes the third column is the cell type/state.
+    - Automatically detects the delimiter (tab or comma).
+    - Attempts to automatically detect and skip a header row.
+    - Ignores columns beyond the third one.
+    - **Filters out leaves with types "Unknown", "aPSM", and "pPSM".**
+
+    Returns: dict {leaf_name: type_symbol} (types are coerced to str)
+    """
+
+    ext = os.path.splitext(path)[1].lower()
+
+    # --- JSON Handling ---
+    if ext == ".json":
+        with open(path, "r") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError(f"{path}: JSON must be an object mapping leaf->type.")
+        # Store intermediate result before filtering
+        out = {str(k): str(v) for k, v in data.items()}
+
+    # --- TSV/CSV/TXT Handling ---
+    elif ext in (".csv", ".tsv", ".txt"):
+        out = {}
+        with open(path, "r", newline="") as f:
+            try:
+                sample = f.read(2048)
+                dialect = csv.Sniffer().sniff(sample, delimiters=",\t")
+                f.seek(0)
+                reader = csv.reader(f, dialect)
+                # print(f"Detected delimiter '{dialect.delimiter}' for {path}") # Optional: uncomment for debugging
+            except csv.Error:
+                # print(f"Warning: Could not sniff delimiter for {path}, defaulting to tab.") # Optional: uncomment for debugging
+                f.seek(0)
+                reader = csv.reader(f, delimiter='\t')
+
+            rows = list(reader)
+            if not rows:
+                raise ValueError(f"{path}: empty file")
+
+            start_idx = 0
+            first_row_cells = [cell.strip().lower() for cell in rows[0]]
+            looks_like_header = False
+            if len(first_row_cells) >= 3:
+                 if (first_row_cells[1] in ['cellbc', 'leaf', 'id', 'barcode']) and \
+                    (first_row_cells[2] in ['cell_state', 'type', 'state', 'celltype']):
+                     looks_like_header = True
+
+            if looks_like_header:
+                # print(f"Detected header in {path}: {rows[0]}") # Optional: uncomment for debugging
+                start_idx = 1
+            # else:
+                 # print(f"No header detected (or assuming no header) in {path}") # Optional: uncomment for debugging
+
+            for i in range(start_idx, len(rows)):
+                row = rows[i]
+                if len(row) < 3:
+                    # print(f"Warning: Skipping row {i+1} in {path}: needs at least 3 columns (index, leaf, type). Content: {row}") # Optional: uncomment for debugging
+                    continue
+
+                leaf = row[1].strip().strip('"\'')
+                typ = row[2].strip().strip('"\'')
+
+                if not leaf or not typ:
+                    # print(f"Warning: Skipping row {i+1} in {path}: has empty leaf (col 2) or type (col 3). Content: {row}") # Optional: uncomment for debugging
+                    continue
+
+                if leaf in out:
+                    # print(f"Warning: Duplicate leaf '{leaf}' found at line {i+1} in {path}. Overwriting type.") # Optional: uncomment for debugging
+                    pass # Allow overwrite silently or warn
+                out[leaf] = str(typ)
+
+        if not out:
+             # This check is now before filtering, might still return empty if all leaves are excluded later
+             print(f"Warning: No valid leaf-type pairs extracted initially from {path}, check format/columns.")
+             # raise ValueError(f"No valid leaf-type pairs extracted from {path}")
+
+    else:
+        raise ValueError(f"Unsupported mapping file type: {path} (use .csv, .tsv, .txt, or .json)")
+
+    # --- ** FILTERING STEP ** ---
+    excluded_types = {"Unknown", "aPSM", "pPSM"}
+    filtered_out = {leaf: typ for leaf, typ in out.items() if typ not in excluded_types}
+
+    if not filtered_out and out: # If we started with data but filtered everything
+        print(f"Warning: All leaves in {path} were filtered out (types were Unknown, aPSM, or pPSM).")
+    # elif len(out) != len(filtered_out):
+        # print(f"Filtered {len(out) - len(filtered_out)} leaves (types: Unknown, aPSM, pPSM) from {path}.")
+
+
+    return filtered_out # Return the filtered dictionary
+
 def read_leaf_type_map(path: str) -> Dict[str, str]:
     """
     Read a leaf->type mapping from a file.
@@ -3634,7 +3772,9 @@ def read_trees_and_maps(tree_paths: List[str], meta_paths: List[str]):
             raise FileNotFoundError(p)
 
     trees = [read_newick_file(p) for p in tree_paths]
-    raw_maps = [read_leaf_type_map(p) for p in meta_paths]
+    # raw_maps = [read_leaf_type_map(p) for p in meta_paths]
+    raw_maps = [read_leaf_type_map_tls(p) for p in meta_paths]
+
     leaf_type_maps = [filter_leaf_map_to_tree(root, m) for root, m in zip(trees, raw_maps)]
 
     # Build type universe S from whatever is actually present
@@ -3806,6 +3946,66 @@ def plot_mcmc_traces(
     plt.savefig(output_path, dpi=300)
     plt.close(fig)
     print(f"📈 Plot saved to {output_path}")
+
+def plot_pareto_elbow(
+    results_list: List[Dict],
+    title: str,
+    output_path: str
+):
+    """
+    Plots the NLL vs. k (number of potencies) to help visually 
+    identify the "elbow" k.
+
+    Args:
+        results_list: List of results dictionaries from the k_sweep.
+        title: The title for the plot.
+        output_path: The file path to save the plot image.
+    """
+    if not results_list:
+        print("Warning: Cannot plot elbow, results list is empty.")
+        return
+
+    # Sort results by k value
+    valid_results = [r for r in results_list if math.isfinite(r['log_likelihood'])]
+    if not valid_results:
+        print("Warning: No valid (finite) results to plot for elbow.")
+        return
+        
+    # --- CHANGE: Sort by k, not k_model ---
+    valid_results.sort(key=lambda x: x['k'])
+
+    # Extract data for plotting
+    k_values = [r['k'] for r in valid_results]
+    k_models = [r['k_model'] for r in valid_results] # We'll use this for annotation
+    nll_values = [-r['log_likelihood'] for r in valid_results]
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # --- CHANGE: Plot NLL vs. k_values ---
+    ax.plot(k_values, nll_values, marker='o', linestyle='-', label='Negative Log-Likelihood (NLL)')
+
+    # Annotate each point with its resulting 'K_model' (total complexity)
+    for i, k_val in enumerate(k_values):
+        k_mod = k_models[i]
+        # --- CHANGE: Plot on (k_val, nll_val) and annotate with k_model ---
+        ax.annotate(f"K_model={k_mod}", (k_values[i], nll_values[i]),
+                    textcoords="offset points", xytext=(0, 10), ha='center',
+                    fontsize=9, color='gray')
+
+    # --- CHANGE: Update title and X-axis label ---
+    ax.set_title(title.replace("Pareto", "NLL"), fontsize=16)
+    ax.set_xlabel("Number of Potencies (k)", fontsize=12)
+    ax.set_ylabel("Model Error (Negative Log-Likelihood)", fontsize=12)
+    ax.legend()
+    ax.grid(True, linestyle='--', alpha=0.6)
+    
+    # Set x-axis to show integer k values
+    ax.xaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True))
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.close(fig)
+    print(f"📈 NLL vs. k elbow plot saved to {output_path}")
 
 
 def process_case( # This function REPLACES your old `process_case`
@@ -3989,63 +4189,290 @@ def process_case( # This function REPLACES your old `process_case`
 
     return jd, gt_loss, best_score_final, edge_jacc, im_s
 
-def main_multi_type(type_nums=[10,14],
-                    maps_start=17, maps_end=26,
-                    cells_list=[50,100,200],
-                    iters = 50,
-                    restarts = 4,
-                    fixed_k = 5,
-                    out_csv="results_types_6_10_14_maps_17_26.csv",
-                    log_dir="logs_types",
-                    tree_kind: str = "graph"):
-    random.seed(7)
+def main_tls(
+    input_file_list: str, # Path to the file listing tree/meta pairs
+    iters: int = 500,     # MCMC iterations (consider increasing)
+    restarts: int = 4,    # Number of parallel chains
+    fixed_k: int = 10,    # Number of multi-type potencies
+    out_csv: str = "tls_results.csv",
+    log_dir: Optional[str] = "tls_logs",
+    # unit_drop_edges: bool = False # Set based on your model assumption
+):
+    random.seed(42) # Or another seed
     priors = Priors(potency_mode="fixed_k", fixed_k=fixed_k, rho=0.2)
-    results = []
+    unit_drop_edges = False # Usually False for biological realism unless specified
 
-    with open(out_csv, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["Type","MapIdx","Cells","Jaccard","GT Loss","Pred Loss","Edge_Jaccard","IM_similarity"])
+    try:
+        # 1. Parse the input file list to get paths
+        tree_paths, meta_paths = parse_input_file_list(input_file_list)
 
-        for t in type_nums:
-            for idx in range(maps_start, maps_end+1):
-                for cells in cells_list:
-                    try:
-                        jd, gt_loss, pred_loss, edge_jacc, im_s = process_case(
-                            idx, t, cells, priors,
-                            iters=iters, restarts=restarts, log_dir=log_dir,
-                            tree_kind=tree_kind, n_jobs= os.cpu_count()-1  # start single-process
-                        )
-                        writer.writerow([t, idx, cells, f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}", f"{edge_jacc:.6f}", f"{im_s:.6f}"])
-                        results.append((t, idx, cells, jd, gt_loss, pred_loss, edge_jacc, im_s))
-                    except Exception as e:
-                        print(f"[WARN] Failed type_{t} map {idx:04d} cells_{cells}: {repr(e)}")
-                        traceback.print_exc()
-                        writer.writerow([t, idx, cells, "ERROR","ERROR","ERROR", "ERROR","ERROR"])
-                        results.append((t, idx, cells, None,None,None,None,None))
+        # 2. Load all trees and maps
+        trees, leaf_type_maps, S = read_trees_and_maps(tree_paths, meta_paths)
+        print(f"Loaded {len(trees)} trees. Type universe S: {S}")
+
+        # 3. Precompute B_sets for all trees
+        all_B_sets = [compute_B_sets(tree, ltm) for tree, ltm in zip(trees, leaf_type_maps)]
+
+        # 4. (Optional but recommended) Get candidate pool and Fitch probs
+        print_fitch_potency_probs_once(
+            S, trees, leaf_type_maps,
+            header=f"\n[Potency ranking] from {input_file_list}"
+        )
+        pool = collect_fitch_multis(S, trees, leaf_type_maps)
+        fitch_probs_list = compute_fitch_potency_probs(S, trees, leaf_type_maps)
+        fitch_probs_dict = {p: prob for p, prob in fitch_probs_list}
 
 
+        # --- MCMC Phase 1: Search for Best Z ---
+        print("\n--- Starting MCMC Phase 1: Searching for Potency Sets (Z) ---")
+        bestF_Z, best_score_Z, all_stats_Z = run_mcmc_only_Z_parallel(
+            S=S,
+            trees=trees,
+            leaf_type_maps=leaf_type_maps,
+            # all_B_sets=all_B_sets,
+            priors=priors,
+            unit_drop_edges=unit_drop_edges, # Use consistent setting
+            fixed_k=fixed_k,
+            steps=iters,
+            burn_in=(iters * 15) // 100,
+            thin=10,
+            base_seed=123,
+            candidate_pool=pool,
+            block_swap_sizes=(1,), # Usually swap 1 at a time is fine
+            n_chains=restarts,
+            fitch_probs=fitch_probs_dict
+        )
+
+        if all_stats_Z and log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+            plot_mcmc_traces(
+                all_stats=all_stats_Z,
+                title=f"MCMC Trace for Potency Sets (Z)",
+                output_path=os.path.join(log_dir, f"trace_Z_tls.png")
+            )
+
+        if bestF_Z is None:
+            print("[ERROR] MCMC-Z Phase 1 failed to find a structure.")
+            raise RuntimeError("MCMC-Z failed")
+
+        Z_map = bestF_Z.Z_active
+        print(f"--- MCMC Phase 1 Complete. Best Z score: {best_score_Z:.4f} ---")
+        # check_convergence(all_stats_Z) # Check convergence for Z search
+
+        # --- 3. Phase 2: Create F_full ---
+        print("\n--- Phase 2: Building fully-connected graph (F_full) ---")
+        A_full = _full_edges_for_Z(Z_map, unit_drop_edges)
+        F_full = Structure(S, Z_map, A_full, unit_drop_edges)
+        print(f"F_full has {len(Z_map)} nodes and {len(A_full)} admissible edges.")
+
+        # --- 4. Phase 3: Calculate Viterbi Flow ---
+        viterbi_flow = calculate_viterbi_flow(
+            trees, F_full, all_B_sets, leaf_type_maps
+        )
+        
+        if not viterbi_flow:
+            print("[ERROR] Viterbi flow calculation returned empty. Cannot build A_map.")
+            raise RuntimeError("Viterbi flow failed")
+
+        # --- 5. Phase 4: Select A_map ---
+        S_nodes = {frozenset([t]) for t in S} # Get the set of singletons
+        A_map_final = build_A_map_from_flow(
+            viterbi_flow, 
+            Z_map,
+            S_nodes, # <-- ADD THIS ARGUMENT
+            z_score_threshold=1.5 # You can tune this
+        )
+        
+        # --- 6. Final Scoring and Reporting ---
+        print("\n--- Final Scoring ---")
+        bestF_final = Structure(S, Z_map, A_map_final, unit_drop_edges)
+        
+        # Score this final structure
+        # final_logp_Z = priors.log_prior_Z(S, Z_map)
+        # final_num_admiss = len(A_full) # Num admissible edges for this Z
+        # final_logp_A = priors.log_prior_A(
+        #     Z_map, A_map_final, unit_drop_edges, final_num_admiss
+        # )
+
+        # final_log_L = get_log_likelihood(
+        #     bestF_final, trees, leaf_type_maps, all_B_sets
+        # )
+        
+        # if not math.isfinite(final_logp_Z): final_logp_Z = 0 # Handle -inf prior
+        # if not math.isfinite(final_logp_A): final_logp_A = 0 # Handle -inf prior
+        
+        # best_score_final = final_logp_Z + final_logp_A + final_log_L
+
+        # [Replacement code starting from line ~1894]
+        best_score_final, _ = score_structure(bestF_final, trees, leaf_type_maps, priors)
+
+        # --- AIC/BIC Calculation ---
+        # 1. Get Log-Likelihood (L)
+        best_log_likelihood = get_log_likelihood(
+            bestF_final, trees, leaf_type_maps, all_B_sets
+        )
+        
+        # 2. Get Number of Parameters (K_model)
+        # We define K_model = (num multi-type potencies) + (num edges)
+        num_potencies = fixed_k
+        num_edges = len(bestF_final.A)
+        K_model = num_potencies + num_edges
+        
+        # 3. Get Sample Size (n)
+        # We define n = total number of mapped leaves across all trees
+        n_samples = sum(len(ltm) for ltm in leaf_type_maps)
+        
+        # 4. Calculate AIC and BIC
+        aic = -math.inf
+        bic = -math.inf
+        
+        if math.isfinite(best_log_likelihood) and n_samples > 0:
+            # AIC = 2*K_model - 2*ln(L)
+            aic = 2 * K_model - 2 * best_log_likelihood
+            
+            # BIC = ln(n)*K_model - 2*ln(L)
+            bic = math.log(n_samples) * K_model - 2 * best_log_likelihood
+        
+        # --- End AIC/BIC Calculation ---
+
+
+        # print(f"Final Log P(Z): {final_logp_Z:.4f}")
+        # print(f"Final Log P(A|Z): {final_logp_A:.4f} ({len(A_map_final)} edges)")
+        print(f"Final score (with edges): {best_score_final:.4f}")
+        
+        # ... (all the print statements for scores, sets, edges...) ...
+        print("\nScores:")
+        print(f"  Log Posterior (Pred): {best_score_final:.6f}")
+        # ...
+        predicted_sets = {p for p in bestF_final.Z_active if len(p) > 1}
+        pretty_print_sets("Predicted Sets", predicted_sets)
+        # ...
+        edges = sorted([e for e, v in bestF_final.A.items() if v == 1],
+                       key=lambda e: (len(e[0]), tuple(sorted(list(e[0]))), pot_str(e[1])))
+        for (u, v) in sorted(edges, key=lambda e: (len(e[0]), tuple(sorted(e[0])), len(e[1]), tuple(sorted(e[1])))):
+            print(f"{sorted(list(u))} -> {sorted(list(v))}")
+        
+        # --- Create a single-row CSV for this k ---
+        with open(out_csv, "w", newline="") as f:
+            writer = csv.writer(f)
+            header = [
+                "InputFile", "FixedK", "BestLogPosterior", "LogLikelihood", 
+                "AIC", "BIC", "K_model", "n_samples", "NumEdges"
+            ]
+            writer.writerow(header)
+            writer.writerow([
+                input_file_list, fixed_k, f"{best_score_final:.6f}", f"{best_log_likelihood:.6f}",
+                f"{aic:.6f}", f"{bic:.6f}", K_model, n_samples, num_edges
+            ])
+        print(f"\nResults summary for k={fixed_k} saved to {out_csv}")
+        
+        # --- Return results dictionary for summary ---
+        return {
+            "k": fixed_k,
+            "log_posterior": best_score_final,
+            "log_likelihood": best_log_likelihood,
+            "aic": aic,
+            "bic": bic,
+            "k_model": K_model,
+            "n_samples": n_samples,
+            "num_edges": num_edges
+        }
+
+    except FileNotFoundError as e:
+        print(f"[ERROR] Input file not found: {e}")
+    except Exception as e:
+        print(f"[ERROR] An unexpected error occurred:")
+        traceback.print_exc()
+
+
+# [Replacement code for line ~1970]
 if __name__ == "__main__":
-    main_multi_type(
-        type_nums=[6],
-        maps_start=2,
-        maps_end=6,
-        cells_list=[50],
-        iters = 100,
-        restarts = 7,
-        fixed_k = 5,
-        out_csv="hello.csv",
-        log_dir="prac",
-        tree_kind="graph"   # or "bin_trees" or "graph"
-    )
-    # main_multi_type(
-    #     type_nums=[10],
-    #     maps_start=2,
-    #     maps_end=6,
-    #     cells_list=[50],
-    #     iters = 10,
-    #     restarts = 7,
-    #     fixed_k = 9,
-    #     out_csv="viterbi_updated_10_2_6_50.csv",
-    #     log_dir="prac",
-    #     tree_kind="graph"   # or "bin_trees" or "graph"
-    # )
+    
+    # --- Define Your Experiment Parameters ---
+    
+    # 1. Define the range of k values you want to test
+    K_RANGE = list(range(5, 9)) # e.g., [5, 6, 7, 8, 9, 10, 11, 12]
+    
+    # 2. Set MCMC parameters
+    MCMC_ITERATIONS = 60 # Set this to your desired value (e.g., 500, 1000)
+    MCMC_CHAINS = 5       # Number of parallel restarts (e.g., 4, 7)
+    
+    # 3. Define input/output paths
+    INPUT_LIST_FILE = "TLS_locations.txt"
+    LOG_DIRECTORY = "tls_run_logs_viterbi_k_sweep"
+    SUMMARY_CSV_FILE = "tls_aic_bic_summary.csv"
+    
+    # ------------------------------------------
+    
+    print(f"--- Starting AIC/BIC Model Selection ---")
+    print(f"Testing k values: {K_RANGE}")
+    print(f"MCMC settings: {MCMC_ITERATIONS} iterations, {MCMC_CHAINS} chains")
+    print(f"Log directory: {LOG_DIRECTORY}")
+    print(f"Summary CSV: {SUMMARY_CSV_FILE}")
+    
+    if LOG_DIRECTORY:
+        os.makedirs(LOG_DIRECTORY, exist_ok=True)
+        
+    all_k_results = []
+
+    for k_val in K_RANGE:
+        print(f"\n{'='*60}\n[RUNNING] k = {k_val}\n{'='*60}")
+        
+        # Define output CSV path for this specific k
+        k_csv_out = os.path.join(LOG_DIRECTORY, f"tls_k{k_val}_results.csv")
+        
+        try:
+            results_dict = main_tls(
+                input_file_list=INPUT_LIST_FILE,
+                iters=MCMC_ITERATIONS,
+                restarts=MCMC_CHAINS,
+                fixed_k=k_val,
+                out_csv=k_csv_out,
+                log_dir=LOG_DIRECTORY
+            )
+            
+            if results_dict:
+                all_k_results.append(results_dict)
+            
+            print(f"[SUCCESS] Finished k = {k_val}")
+            print(f"  > AIC: {results_dict['aic']:.4f}")
+            print(f"  > BIC: {results_dict['bic']:.4f}")
+            print(f"  > LogLik: {results_dict['log_likelihood']:.4f}")
+
+        except Exception as e:
+            print(f"\n[ERROR] Failed to run for k = {k_val}")
+            print(f"Error: {e}")
+            traceback.print_exc()
+
+    # --- Write Final Summary CSV ---
+    if not all_k_results:
+        print("\nNo results were collected. Exiting.")
+    else:
+        print(f"\n--- Model Selection Summary ---")
+        print(f"{'k':<4} | {'LogLikelihood':<15} | {'AIC':<15} | {'BIC':<15} | {'K_model':<8} | {'NumEdges':<8}")
+        print("-" * 79)
+        
+        # Sort by BIC (lowest is best)
+        all_k_results.sort(key=lambda x: x['bic'])
+        
+        for res in all_k_results:
+            print(f"{res['k']:<4} | {res['log_likelihood']:<15.4f} | {res['aic']:<15.4f} | {res['bic']:<15.4f} | {res['k_model']:<8} | {res['num_edges']:<8}")
+
+        best_model = all_k_results[0]
+        print(f"\nBest model selected by BIC: k = {best_model['k']} (BIC: {best_model['bic']:.4f})")
+        
+        # Write the summary file
+        try:
+            with open(SUMMARY_CSV_FILE, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=all_k_results[0].keys())
+                writer.writeheader()
+                writer.writerows(all_k_results)
+            print(f"Full summary saved to {SUMMARY_CSV_FILE}")
+        except Exception as e:
+            print(f"Error saving summary CSV: {e}")
+        # --- ADD THIS BLOCK TO PLOT THE ELBOW ---
+        plot_pareto_elbow(
+            results_list=all_k_results,
+            title=f"Pareto Frontier / Elbow Method for Optimal k",
+            output_path=os.path.join(LOG_DIRECTORY, "elbow_plot.png")
+        )

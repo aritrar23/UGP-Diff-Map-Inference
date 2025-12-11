@@ -5,7 +5,7 @@ import csv
 import json
 import math, random
 import itertools
-from typing import Iterable,  Dict, Tuple, List, Optional, Set, FrozenSet, Any
+from typing import Iterable,  Dict, Tuple, List, Optional, Set, FrozenSet
 from collections import Counter, defaultdict
 from tqdm import trange
 import traceback
@@ -30,475 +30,6 @@ p ~ Beta(1,1) is integrated out exactly.
 - Priors: fixed-k (uniform over potency sets) OR Bernoulli(pi_P); edges Bernoulli(rho)
 - Stochastic hill-climb + simulated annealing over F=(Z,A)
 """
-
-# ==============================================================================
-# === NEW EDGE SELECTION FUNCTIONS (for Phase 4) ===============================
-# ==============================================================================
-
-class UnionFind:
-    """A simple Union-Find data structure for Kruskal's algorithm."""
-    def __init__(self, nodes):
-        self.parent = {node: node for node in nodes}
-        self.rank = {node: 0 for node in nodes}
-
-    def find(self, i):
-        if self.parent[i] == i:
-            return i
-        self.parent[i] = self.find(self.parent[i]) # Path compression
-        return self.parent[i]
-
-    def union(self, i, j):
-        root_i = self.find(i)
-        root_j = self.find(j)
-        if root_i != root_j:
-            # Union by rank
-            if self.rank[root_i] > self.rank[root_j]:
-                self.parent[root_j] = root_i
-            elif self.rank[root_i] < self.rank[root_j]:
-                self.parent[root_i] = root_j
-            else:
-                self.parent[root_j] = root_i
-                self.rank[root_i] += 1
-            return True
-        return False
-
-def kruskal_mst(nodes: Set[FrozenSet[str]], weighted_edges: List[Tuple[float, Tuple]]) -> Set[Tuple]:
-    """
-    Runs Kruskal's algorithm to find a MAXIMUM Spanning Tree.
-    
-    Args:
-        nodes: All nodes (potencies) in the graph.
-        weighted_edges: List of (weight, (P, Q)) tuples.
-    
-    Returns:
-        A set of edges (P, Q) that form the MST.
-    """
-    mst_edges = set()
-    uf = UnionFind(nodes)
-    
-    # Sort by weight DESCENDING to get a Maximum ST
-    weighted_edges.sort(key=lambda x: x[0], reverse=True)
-    
-    for weight, (P, Q) in weighted_edges:
-        if uf.union(P, Q):
-            # This edge connects two new components
-            mst_edges.add((P, Q))
-            
-    return mst_edges
-
-# def build_A_map_from_flow(
-#     viterbi_flow: Dict[Tuple[FrozenSet[str], FrozenSet[str]], float],
-#     Z_map: Set[FrozenSet[str]],
-#     S_nodes: Set[FrozenSet[str]], # Set of singletons
-#     z_score_threshold: float = 1.5 # This argument is no longer used, but kept for compatibility
-# ) -> Dict[Tuple[FrozenSet[str], FrozenSet[str]], int]:
-#     """
-#     Builds the final A_map using the:
-#     1. "Max-Flow Backbone" (MST)
-#     2. "Branching Fix" (>= 2 children)
-#     3. "20% Flow Rule" (Paper's heuristic)
-#     """
-#     print("Building final A_map from Viterbi flow...")
-#     A_map: Dict[Tuple[FrozenSet[str], FrozenSet[str]], int] = {}
-    
-#     if not viterbi_flow:
-#         print("Warning: Viterbi flow is empty. Returning empty edge set.")
-#         return {}
-
-#     # --- 1. Step 4a: Find the "Max-Flow Backbone" (MST) ---
-#     # (This section is UNCHANGED)
-    
-#     undirected_weights: Dict[FrozenSet[Tuple], float] = defaultdict(float)
-#     for (P, Q), flow in viterbi_flow.items():
-#         edge_key = frozenset([P, Q])
-#         if flow > undirected_weights[edge_key]:
-#             undirected_weights[edge_key] = flow
-    
-#     kruskal_edge_list = []
-#     for edge_key, weight in undirected_weights.items():
-#         if weight > 0:
-#             P, Q = tuple(edge_key)
-#             kruskal_edge_list.append((weight, (P, Q)))
-
-#     print(f"Finding Maximum Spanning Tree (Backbone) from {len(kruskal_edge_list)} weighted edges...")
-#     mst_edges_undir = kruskal_mst(Z_map, kruskal_edge_list)
-    
-#     print(f"Backbone (from MST) contains {len(mst_edges_undir)} directed edges:")
-#     for (P, Q) in mst_edges_undir:
-#         flow_PQ = viterbi_flow.get((P, Q), 0)
-#         flow_QP = viterbi_flow.get((Q, P), 0)
-        
-#         edge_to_add = (P, Q) if flow_PQ >= flow_QP else (Q, P)
-#         A_map[edge_to_add] = 1
-#         print(f"  [MST] Added: {pot_str(edge_to_add[0])} -> {pot_str(edge_to_add[1])} (w={max(flow_PQ, flow_QP):.2f})")
-
-
-#     # --- 2. Step 4b: Enforce >= 2 Children Constraint ---
-#     # (This section is UNCHANGED)
-    
-#     print("Enforcing >= 2 children constraint for progenitors...")
-#     progenitor_nodes = Z_map - S_nodes
-#     added_for_branching = 0
-    
-#     for P in progenitor_nodes:
-#         current_out_degree = sum(1 for (parent, child) in A_map if parent == P)
-        
-#         needed = 2 - current_out_degree
-#         if needed <= 0:
-#             continue
-            
-#         missing_edges = []
-#         for Q in Z_map:
-#             edge = (P, Q)
-#             if P != Q and edge not in A_map and viterbi_flow.get(edge, 0) > 0:
-#                 missing_edges.append((viterbi_flow[edge], edge))
-        
-#         missing_edges.sort(key=lambda x: x[0], reverse=True)
-        
-#         edges_to_add = missing_edges[:needed]
-        
-#         if edges_to_add:
-#             print(f"  Fixing {pot_str(P)} (needs {needed} more):")
-#             for flow, edge in edges_to_add:
-#                 A_map[edge] = 1
-#                 added_for_branching += 1
-#                 print(f"    [BRANCH] Added: {pot_str(edge[0])} -> {pot_str(edge[1])} (w={flow:.2f})")
-            
-#     print(f"Added {added_for_branching} edges to satisfy branching constraint.")
-
-#     # --- 3. Step 4c: Add Secondary Paths (Paper's 20% Rule) ---
-#     # (This section is NEW and replaces the z-score logic)
-    
-#     print("Adding secondary edges with > 20% of parent's total flow...")
-
-#     # First, pre-calculate the total *positive* Viterbi flow out of *every* node
-#     total_flow_out = defaultdict(float)
-#     for (P, Q), flow in viterbi_flow.items():
-#         if flow > 0:
-#             total_flow_out[P] += flow
-            
-#     added_for_flow = 0
-    
-#     # Now, check every potential edge that passed the Viterbi step
-#     for (P, Q), flow in viterbi_flow.items():
-#         edge = (P, Q)
-        
-#         # Check 1: Is it a positive-flow edge?
-#         if flow <= 0:
-#             continue
-            
-#         # Check 2: Is it *already* in our map? (from MST or branching)
-#         if edge in A_map:
-#             continue
-            
-#         # Check 3: Is the parent a progenitor? (We don't care about flow from singletons)
-#         if P in S_nodes:
-#             continue
-            
-#         # Check 4: Does it meet the 20% threshold?
-#         parent_total_flow = total_flow_out.get(P, 0)
-        
-#         # Avoid division by zero, and apply the rule
-#         if parent_total_flow > 0 and (flow / parent_total_flow) > 0.20:
-#             A_map[edge] = 1
-#             added_for_flow += 1
-#             print(f"  [FLOW 20%] Added: {pot_str(P)} -> {pot_str(Q)} (w={flow:.2f} is > 20% of {parent_total_flow:.2f})")
-            
-#     print(f"Added {added_for_flow} edges satisfying the 20% flow rule.")
-#     print(f"Final A_map contains {len(A_map)} total edges.")
-    
-#     return A_map
-
-# def build_A_map_from_flow(
-#     viterbi_flow: Dict[Tuple[FrozenSet[str], FrozenSet[str]], float],
-#     Z_map: Set[FrozenSet[str]],
-#     S_nodes: Set[FrozenSet[str]], # Set of singletons
-#     z_score_threshold: float = 1.5 # This argument is no longer used, but kept for compatibility
-# ) -> Dict[Tuple[FrozenSet[str], FrozenSet[str]], int]:
-#     """
-#     Builds the final A_map using the:
-#     1. "Max-Flow Backbone" (MST)
-#     2. "Fitch Property Fix" (Union of children == Parent)
-#     3. "20% Flow Rule" (Paper's heuristic)
-#     """
-#     print("Building final A_map from Viterbi flow...")
-#     A_map: Dict[Tuple[FrozenSet[str], FrozenSet[str]], int] = {}
-    
-#     if not viterbi_flow:
-#         print("Warning: Viterbi flow is empty. Returning empty edge set.")
-#         return {}
-
-#     # --- 1. Step 4a: Find the "Max-Flow Backbone" (MST) ---
-#     # (This section is UNCHANGED)
-    
-#     undirected_weights: Dict[FrozenSet[Tuple], float] = defaultdict(float)
-#     for (P, Q), flow in viterbi_flow.items():
-#         edge_key = frozenset([P, Q])
-#         if flow > undirected_weights[edge_key]:
-#             undirected_weights[edge_key] = flow
-    
-#     kruskal_edge_list = []
-#     for edge_key, weight in undirected_weights.items():
-#         if weight > 0:
-#             P, Q = tuple(edge_key)
-#             kruskal_edge_list.append((weight, (P, Q)))
-
-#     print(f"Finding Maximum Spanning Tree (Backbone) from {len(kruskal_edge_list)} weighted edges...")
-#     mst_edges_undir = kruskal_mst(Z_map, kruskal_edge_list)
-    
-#     print(f"Backbone (from MST) contains {len(mst_edges_undir)} directed edges:")
-#     for (P, Q) in mst_edges_undir:
-#         flow_PQ = viterbi_flow.get((P, Q), 0)
-#         flow_QP = viterbi_flow.get((Q, P), 0)
-        
-#         edge_to_add = (P, Q) if flow_PQ >= flow_QP else (Q, P)
-#         A_map[edge_to_add] = 1
-#         print(f"  [MST] Added: {pot_str(edge_to_add[0])} -> {pot_str(edge_to_add[1])} (w={max(flow_PQ, flow_QP):.2f})")
-
-
-#     # --- 2. Step 4b: Enforce Fitch (Union) Property ---
-#     # (This section is NEW and replaces the ">= 2 children" logic)
-    
-#     print("Enforcing Fitch (Union) property for progenitors...")
-#     progenitor_nodes = Z_map - S_nodes
-#     added_for_fitch = 0
-    
-#     for P in progenitor_nodes:
-#         # Get current children and their union
-#         current_children = {Q for (p, Q) in A_map if p == P}
-#         if not current_children:
-#             current_union = frozenset()
-#         else:
-#             current_union = frozenset().union(*current_children)
-            
-#         if current_union == P:
-#             continue # Property already satisfied
-
-#         # We are missing fates
-#         missing_fates = P - current_union
-#         fates_still_missing = set(missing_fates) # mutable copy
-#         print(f"  Fixing {pot_str(P)} (missing {pot_str(fates_still_missing)}):")
-
-#         # Find all candidate edges that provide *any* of the original missing fates
-#         candidate_edges = []
-#         for Q in Z_map:
-#             edge = (P, Q)
-#             if P != Q and edge not in A_map:
-#                 flow = viterbi_flow.get(edge, 0)
-#                 # Check which of the *originally* missing fates this Q provides
-#                 fates_provided = Q & missing_fates 
-                
-#                 if flow > 0 and len(fates_provided) > 0:
-#                     candidate_edges.append((flow, edge, fates_provided))
-                    
-#         # Sort candidates by flow, descending
-#         candidate_edges.sort(key=lambda x: x[0], reverse=True)
-        
-#         # Greedily add edges until the set of missing fates is empty
-#         for flow, edge, fates_provided in candidate_edges:
-#             if not fates_still_missing:
-#                 break # We're done for this parent P
-            
-#             # Check if this edge *still* provides something we need
-#             newly_provided = fates_provided & fates_still_missing
-            
-#             if newly_provided:
-#                 A_map[edge] = 1
-#                 added_for_fitch += 1
-#                 fates_still_missing.difference_update(newly_provided)
-#                 print(f"    [FITCH] Added: {pot_str(edge[0])} -> {pot_str(edge[1])} (w={flow:.2f}, provides {pot_str(newly_provided)})")
-        
-#         if fates_still_missing:
-#             print(f"    [WARN] Could not satisfy Fitch for {pot_str(P)}. Still missing {pot_str(fates_still_missing)}.")
-
-#     print(f"Added {added_for_fitch} edges to satisfy Fitch property.")
-
-
-#     # --- 3. Step 4c: Add Secondary Paths (Paper's 20% Rule) ---
-#     # (This section is UNCHANGED)
-    
-#     print("Adding secondary edges with > 20% of parent's total flow...")
-
-#     total_flow_out = defaultdict(float)
-#     for (P, Q), flow in viterbi_flow.items():
-#         if flow > 0:
-#             total_flow_out[P] += flow
-            
-#     added_for_flow = 0
-    
-#     for (P, Q), flow in viterbi_flow.items():
-#         edge = (P, Q)
-        
-#         if flow <= 0:
-#             continue
-#         if edge in A_map: # Check if already added by MST or Fitch-fix
-#             continue
-#         if P in S_nodes: # Don't care about flow from singletons
-#             continue
-            
-#         parent_total_flow = total_flow_out.get(P, 0)
-        
-#         if parent_total_flow > 0 and (flow / parent_total_flow) > 0.20:
-#             A_map[edge] = 1
-#             added_for_flow += 1
-#             print(f"  [FLOW 20%] Added: {pot_str(P)} -> {pot_str(Q)} (w={flow:.2f} is > 20% of {parent_total_flow:.2f})")
-            
-#     print(f"Added {added_for_flow} edges satisfying the 20% flow rule.")
-#     print(f"Final A_map contains {len(A_map)} total edges.")
-    
-#     return A_map
-
-def build_A_map_from_flow(
-    viterbi_flow: Dict[Tuple[FrozenSet[str], FrozenSet[str]], float],
-    Z_map: Set[FrozenSet[str]],
-    S_nodes: Set[FrozenSet[str]], # Set of singletons
-    z_score_threshold: float = 1.5 
-) -> Dict[Tuple[FrozenSet[str], FrozenSet[str]], int]:
-    """
-    Builds the final A_map using the:
-    1. "Greedy Best-Parent Backbone" (Guarantees directed reachability)
-    2. "Fitch Property Fix" (Union of children == Parent)
-    3. "20% Flow Rule" (Secondary paths)
-    """
-    print("Building final A_map from Viterbi flow...")
-    A_map: Dict[Tuple[FrozenSet[str], FrozenSet[str]], int] = {}
-    
-    if not viterbi_flow:
-        print("Warning: Viterbi flow is empty. Returning empty edge set.")
-        return {}
-
-    # --- 1. Step 4a: Max-Flow Backbone (Greedy Best Parent) ---
-    # Goal: Ensure every node (except root) has the single strongest incoming edge.
-    
-    # Identify the global root (largest set)
-    # Sort just to be deterministic in case of ties
-    sorted_nodes = sorted(list(Z_map), key=lambda x: (len(x), tuple(sorted(list(x)))), reverse=True)
-    global_root = sorted_nodes[0]
-    
-    print(f"Identified Global Root: {pot_str(global_root)}")
-    print("Constructing Arborescence (Best-Parent Backbone)...")
-
-    for child in sorted_nodes:
-        if child == global_root:
-            continue
-            
-        # Find all valid parents for this child
-        best_parent = None
-        max_flow = -1.0
-        
-        # Check all possible parents in Z_map
-        for potential_parent in Z_map:
-            edge = (potential_parent, child)
-            
-            # Check if this edge exists in our Viterbi flow
-            # (Note: viterbi_flow only contains admissible edges P->Q where Q is subset of P)
-            if edge in viterbi_flow:
-                flow = viterbi_flow[edge]
-                if flow > max_flow:
-                    max_flow = flow
-                    best_parent = potential_parent
-        
-        if best_parent:
-            edge = (best_parent, child)
-            A_map[edge] = 1
-            print(f"  [BACKBONE] Child {pot_str(child)} connected to {pot_str(best_parent)} (w={max_flow:.2f})")
-        else:
-            print(f"  [WARN] Child {pot_str(child)} has no flow from any parent! It is disconnected.")
-
-    print(f"Backbone contains {len(A_map)} edges.")
-
-
-    # --- 2. Step 4b: Enforce Fitch (Union) Property ---
-    # (This section is UNCHANGED)
-    
-    print("Enforcing Fitch (Union) property for progenitors...")
-    progenitor_nodes = Z_map - S_nodes
-    added_for_fitch = 0
-    
-    for P in progenitor_nodes:
-        # Get current children and their union
-        current_children = {Q for (p, Q) in A_map if p == P}
-        if not current_children:
-            current_union = frozenset()
-        else:
-            current_union = frozenset().union(*current_children)
-            
-        if current_union == P:
-            continue # Property already satisfied
-
-        # We are missing fates
-        missing_fates = P - current_union
-        fates_still_missing = set(missing_fates) # mutable copy
-        print(f"  Fixing {pot_str(P)} (missing {pot_str(fates_still_missing)}):")
-
-        # Find all candidate edges that provide *any* of the original missing fates
-        candidate_edges = []
-        for Q in Z_map:
-            edge = (P, Q)
-            if P != Q and edge not in A_map:
-                flow = viterbi_flow.get(edge, 0)
-                # Check which of the *originally* missing fates this Q provides
-                fates_provided = Q & missing_fates 
-                
-                if flow > 0 and len(fates_provided) > 0:
-                    candidate_edges.append((flow, edge, fates_provided))
-                    
-        # Sort candidates by flow, descending
-        candidate_edges.sort(key=lambda x: x[0], reverse=True)
-        
-        # Greedily add edges until the set of missing fates is empty
-        for flow, edge, fates_provided in candidate_edges:
-            if not fates_still_missing:
-                break # We're done for this parent P
-            
-            # Check if this edge *still* provides something we need
-            newly_provided = fates_provided & fates_still_missing
-            
-            if newly_provided:
-                A_map[edge] = 1
-                added_for_fitch += 1
-                fates_still_missing.difference_update(newly_provided)
-                print(f"    [FITCH] Added: {pot_str(edge[0])} -> {pot_str(edge[1])} (w={flow:.2f}, provides {pot_str(newly_provided)})")
-        
-        if fates_still_missing:
-            print(f"    [WARN] Could not satisfy Fitch for {pot_str(P)}. Still missing {pot_str(fates_still_missing)}.")
-
-    print(f"Added {added_for_fitch} edges to satisfy Fitch property.")
-
-
-    # --- 3. Step 4c: Add Secondary Paths (Paper's 20% Rule) ---
-    # (This section is UNCHANGED)
-    
-    print("Adding secondary edges with > 20% of parent's total flow...")
-
-    total_flow_out = defaultdict(float)
-    for (P, Q), flow in viterbi_flow.items():
-        if flow > 0:
-            total_flow_out[P] += flow
-            
-    added_for_flow = 0
-    
-    for (P, Q), flow in viterbi_flow.items():
-        edge = (P, Q)
-        
-        if flow <= 0:
-            continue
-        if edge in A_map: # Check if already added
-            continue
-        if P in S_nodes: # Don't care about flow from singletons
-            continue
-            
-        parent_total_flow = total_flow_out.get(P, 0)
-        
-        if parent_total_flow > 0 and (flow / parent_total_flow) > 0.20:
-            A_map[edge] = 1
-            added_for_flow += 1
-            print(f"  [FLOW 20%] Added: {pot_str(P)} -> {pot_str(Q)} (w={flow:.2f} is > 20% of {parent_total_flow:.2f})")
-            
-    print(f"Added {added_for_flow} edges satisfying the 20% flow rule.")
-    print(f"Final A_map contains {len(A_map)} total edges.")
-    
-    return A_map
 
 def edges_from_A(A: Dict[Tuple[frozenset, frozenset], int]) -> Set[Tuple[frozenset, frozenset]]:
     return {e for e, v in A.items() if v == 1}
@@ -1467,333 +998,6 @@ class Structure:
         del new.A[e]
         new.recompute_reach()
         return new
-    
-
-def sparse_convolve_2d_viterbi(
-    A: Dict[Tuple[int, int], Tuple[float, Any]], 
-    B: Dict[Tuple[int, int], Tuple[float, Any]],
-    depth: int
-) -> Dict[Tuple[int, int], Tuple[float, Any]]:
-    """
-    Viterbi-style convolution for (O,D) tables.
-    
-    Input tables A and B map:
-      (O, D) -> (max_log_prob, backpointer_for_this_OD_sum)
-      
-    Returns a new table in the same format.
-    """
-    indent = "  " * depth
-    if not A: return B
-    if not B: return A
-    
-    out: Dict[Tuple[int, int], Tuple[float, Any]] = {}
-    
-    for (o1, d1), (log_w1, bp1) in A.items():
-        for (o2, d2), (log_w2, bp2) in B.items():
-            key = (o1 + o2, d1 + d2)
-            new_log_w = log_w1 + log_w2
-            
-            current_log_w, _ = out.get(key, (-math.inf, None))
-            
-            # Viterbi step: check if this new path is better
-            if new_log_w > current_log_w:
-                # This path is the new best one for (o1+o2, d1+d2)
-                # We store the *combined* backpointer
-                
-                ### <--- THIS IS THE FIX ###
-                # We concatenate the backpointer tuples, not nest them.
-                out[key] = (new_log_w, bp1 + bp2)
-                
-    return out
-    
-def dp_tree_root_viterbi(
-    root: TreeNode,
-    active_labels: List[FrozenSet[str]],
-    Reach: Dict[FrozenSet[str], Set[FrozenSet[str]]],
-    B_sets: Dict[TreeNode, Set[str]],
-) -> Tuple[Dict[Tuple[int, int], Tuple[float, Any]], Dict[TreeNode, Any]]:
-    """
-    Performs the Viterbi DP to find the single best labeling.
-    This modifies the original `dp_tree_root_table`.
-    
-    Returns:
-     1. root_table: The final (O,D) -> (max_log_prob, backpointer) table for the root.
-     2. memo: A full memoization table for all nodes, used by the backtracking function.
-    """
-    label_index = {L: i for i, L in enumerate(active_labels)}
-    
-    # memo[v] = Dict[Label L, (scores, backpointers)]
-    #   scores = Dict[(O_subtree, D_subtree), max_log_prob]
-    #   backpointers = Dict[(O_subtree, D_subtree), child_backpointer_map]
-    #     child_backpointer_map = Dict[child_node, (Child_Label_Q, (O_child, D_child))]
-    
-    memo: Dict[TreeNode, Dict[FrozenSet[str], Tuple[
-        Dict[Tuple[int, int], float],
-        Dict[Tuple[int, int], Dict[TreeNode, Tuple[FrozenSet[str], Tuple[int, int]]]]
-    ]]] = {}
-
-    def M(v: TreeNode, P_parent: Optional[FrozenSet[str]], depth: int):
-        
-        # Determine allowed labels for this node 'v'
-        if P_parent is None:
-            allowed_labels = list(Reach.keys()) # Root can be anything
-        else:
-            allowed_labels = list(Reach.get(P_parent, set()))
-
-        if v in memo:
-            # We already computed the full table for this node
-            return memo[v]
-
-        indent = "  " * depth
-        
-        if v.is_leaf():
-            # --- Leaf Node Base Case ---
-            node_results: Dict[FrozenSet[str], Tuple[
-                Dict[Tuple[int, int], float],
-                Dict[Tuple[int, int], Dict[TreeNode, Tuple[FrozenSet[str], Tuple[int, int]]]]
-            ]] = {}
-            
-            for L in allowed_labels:
-                if not B_sets[v].issubset(L):
-                    # This label is not allowed
-                    continue
-                
-                o_local = len(L & B_sets[v])
-                d_local = len(L - B_sets[v])
-                
-                # The score is log(1.0) = 0. We apply Beta func at the end.
-                # The "backpointer" is empty.
-                scores = {(o_local, d_local): 0.0}
-                backpointers = {(o_local, d_local): {}}
-                node_results[L] = (scores, backpointers)
-
-            memo[v] = node_results
-            return node_results
-
-        # --- Internal Node Recursive Case ---
-        Bv = B_sets.get(v, set())
-        node_results = {}
-
-        for L in allowed_labels:
-            if not Bv.issubset(L):
-                continue
-            
-            o_local = len(L & B_sets[v])
-            d_local = len(L - B_sets[v])
-
-            # Get tables from all children, assuming 'v' is labeled 'L'
-            child_label_results = [M(u, L, depth + 1) for u in v.children]
-
-            # We need to find the *best* combination of child labels
-            # This is complex. Let's simplify.
-            
-            # --- Viterbi Convolution of Children ---
-            # We need to convolve the results from all children
-            
-            # For each child, find its *best* label Q and the (O,D) table
-            # from that best Q. This is still wrong.
-            
-            # Let's retry the convolve logic.
-            
-            child_tables = []
-            all_children_valid = True
-            for child_node, child_result_map in zip(v.children, child_label_results):
-                # child_result_map = Dict[Child_Label_Q, (scores, backpointers)]
-                
-                # Combine all tables from all possible labels Q for this child
-                child_combined_scores: Dict[Tuple[int, int], Tuple[float, Any]] = {}
-                
-                for Q, (scores, backpointers) in child_result_map.items():
-                    for od_key, log_prob in scores.items():
-                        # We store a backpointer to (Q, od_key)
-                        bp = (Q, od_key) 
-                        current_log_prob, _ = child_combined_scores.get(od_key, (-math.inf, None))
-                        
-                        if log_prob > current_log_prob:
-                            child_combined_scores[od_key] = (log_prob, bp)
-                
-                if not child_combined_scores:
-                    all_children_valid = False
-                    break
-                
-                child_tables.append((child_node, child_combined_scores))
-            
-            if not all_children_valid:
-                continue
-
-            # Convolve the child tables
-            # {(O,D): (log_prob, ((bp_c1), (bp_c2), ...))}
-            conv_scores: Dict[Tuple[int, int], Tuple[float, Any]] = { (0,0): (0.0, tuple()) }
-            if child_tables:
-                conv_scores = child_tables[0][1]
-                # Store node in backpointer
-                conv_scores = {od: (lp, ((child_tables[0][0], bp),)) for od, (lp, bp) in conv_scores.items()}
-                
-                for child_node, child_table in child_tables[1:]:
-                    # Wrap child_table backpointers
-                    wrapped_child_table = {od: (lp, ((child_node, bp),)) for od, (lp, bp) in child_table.items()}
-                    conv_scores = sparse_convolve_2d_viterbi(conv_scores, wrapped_child_table, depth + 1)
-
-            # Now, add our local (o,d) and store in node_results[L]
-            final_scores = {}
-            final_backpointers = {}
-            for (Oc, Dc), (log_w, bp_tuple) in conv_scores.items():
-                key_out = (Oc + o_local, Dc + d_local)
-                final_scores[key_out] = log_w
-                
-                # Convert tuple of ((node, (Q, od)), ...) to a dict
-                bp_map = {node: bp for node, bp in bp_tuple}
-                final_backpointers[key_out] = bp_map
-
-            node_results[L] = (final_scores, final_backpointers)
-
-        memo[v] = node_results
-        return node_results
-
-    # --- Main call ---
-    # We pass P_parent=None for the root, which allows all labels
-    root_result_map = M(root, None, 0)
-    
-    # Combine tables from all possible root labels
-    final_root_table: Dict[Tuple[int, int], Tuple[float, Any]] = {}
-    for L_root, (scores, backpointers) in root_result_map.items():
-        for od_key, log_prob in scores.items():
-            # Backpointer for the root is its label (L_root) and its (O,D) key
-            bp = (L_root, od_key)
-            current_log_prob, _ = final_root_table.get(od_key, (-math.inf, None))
-            
-            if log_prob > current_log_prob:
-                final_root_table[od_key] = (log_prob, bp)
-                
-    return final_root_table, memo
-
-
-def find_best_viterbi_labeling(
-    root: TreeNode,
-    root_table: Dict[Tuple[int, int], Tuple[float, Any]],
-    memo: Dict[TreeNode, Any]
-) -> Dict[TreeNode, FrozenSet[str]]:
-    """
-    Backtracks through the Viterbi memoization tables to reconstruct
-    the single most probable labeling, L_MAP.
-    """
-    
-    # 1. Find the best (O,D) at the root
-    best_score = -math.inf
-    best_OD = None
-    best_root_bp = None
-    
-    for (O, D), (log_w, bp) in root_table.items():
-        log_beta = math.lgamma(O+1) + math.lgamma(D+1) - math.lgamma(O+D+2)
-        score = log_w + log_beta
-        if score > best_score:
-            best_score = score
-            best_OD = (O, D)
-            best_root_bp = bp
-
-    if best_root_bp is None:
-        # This tree is impossible to label
-        return {}
-        
-    # 2. Start the recursive backtracking
-    labeling: Dict[TreeNode, FrozenSet[str]] = {}
-    
-    def reconstruct(v: TreeNode, L_v: FrozenSet[str], OD_v: Tuple[int, int]):
-        """Recursively reconstructs the labeling."""
-        
-        # Set the label for this node
-        labeling[v] = L_v
-        
-        if v.is_leaf():
-            return # Reached the end
-            
-        # Get the backpointer map for this state
-        try:
-            # v_results = memo[v]
-            # L_v_results = v_results[L_v]
-            # L_v_backpointers = L_v_results[1]
-            # child_bp_map = L_v_backpointers[OD_v]
-            child_bp_map = memo[v][L_v][1][OD_v]
-        except KeyError:
-            # This should not happen if the tables are built correctly
-            print(f"KeyError during backtracking: v={v}, L_v={L_v}, OD_v={OD_v}")
-            return
-
-        # Recurse for all children
-        for u in v.children:
-            if u not in child_bp_map:
-                # This child had no valid labels, which is a problem
-                # But we'll continue, as it might just be an empty/filtered child
-                continue
-                
-            (L_u, OD_u) = child_bp_map[u]
-            reconstruct(u, L_u, OD_u)
-
-    # 3. Start the recursion from the root
-    (L_root, OD_root) = best_root_bp
-    if L_root is not None:
-        reconstruct(root, L_root, OD_root)
-        
-    return labeling
-
-def calculate_viterbi_flow(
-    trees: List[TreeNode],
-    F_full: Structure, # The fully-connected structure
-    all_B_sets: List[Dict[TreeNode, Set[str]]],
-    leaf_type_maps: List[Dict[str, str]] # Needed for weighted flow
-) -> Dict[Tuple[FrozenSet[str], FrozenSet[str]], float]:
-    """
-    Calculates the "Viterbi flow" w(P,Q) for all potential edges.
-    """
-    print("Calculating Viterbi flow w(P,Q) for all trees...")
-    viterbi_flow = defaultdict(float)
-    
-    # Pre-calculate leaf counts for all nodes in all trees
-    # (This is needed for the paper's flow weighting)
-    leaf_counts_all_trees = []
-    for tree in trees:
-        counts = {}
-        def post_order_leaf_count(v):
-            if v.is_leaf():
-                counts[v] = 1
-                return 1
-            count = sum(post_order_leaf_count(u) for u in v.children)
-            counts[v] = count
-            return count
-        post_order_leaf_count(tree)
-        leaf_counts_all_trees.append(counts)
-
-    for i, (tree, B_sets, leaf_counts) in enumerate(zip(trees, all_B_sets, leaf_counts_all_trees)):
-        # 1. Run Viterbi DP for this tree
-        root_table, memo = dp_tree_root_viterbi(
-            tree, 
-            F_full.labels_list, 
-            F_full.Reach, 
-            B_sets
-        )
-        
-        # 2. Reconstruct the single best labeling
-        L_MAP = find_best_viterbi_labeling(tree, root_table, memo)
-        
-        if not L_MAP:
-            print(f"Warning: Could not find a valid Viterbi labeling for tree {i}.")
-            continue
-            
-        # 3. Iterate over tree edges and aggregate flow
-        for (v, u) in iter_edges(tree): # v=parent, u=child
-            P = L_MAP.get(v)
-            Q = L_MAP.get(u)
-            
-            if P is None or Q is None:
-                continue # Node was not in the labeling (e.g., filtered leaf)
-                
-            if P != Q:
-                # This is a transition. Add its flow.
-                # Use the paper's weighting: number of leaf descendants of the *child*
-                flow_weight = leaf_counts.get(u, 1) # Default to 1 if not found
-                viterbi_flow[(P, Q)] += flow_weight
-                
-    return viterbi_flow
         
 # ----------------------------
 # Scoring: log posterior
@@ -2068,7 +1272,6 @@ def mcmc_map_search(
     # ----- MCMC loop -----
     kept_Z = []
     kept_scores = []
-    all_scores_trace = [] # <--- **ADDED**: List to store score at EVERY iteration
     best_struct = current.clone()
     best_score = curr_score
     accepts = 0
@@ -2080,8 +1283,6 @@ def mcmc_map_search(
     iterator = range(steps)
     if progress:
         iterator = trange(steps, desc="MCMC (Z-only)", leave=True)
-
-    all_scores_trace.append(curr_score)
 
     for it in iterator:
         Zprop = None
@@ -2130,8 +1331,6 @@ def mcmc_map_search(
             if curr_score > best_score:
                 best_struct = current.clone()
                 best_score = curr_score
-        
-        all_scores_trace.append(curr_score)
 
         if it >= burn_in and ((it - burn_in) % thin == 0):
             kept_Z.append({P for P in current.Z_active if len(P) >= 2})
@@ -2156,11 +1355,9 @@ def mcmc_map_search(
     stats = {
         "samples": kept_Z,
         "scores": kept_scores,
-        "all_scores_trace": all_scores_trace, # <--- **ADDED**: The full trace
         "accept_rate": (accepts / max(1, tried)),
         "inclusion": inclusion,
     }
-
     return best_struct, best_score, stats
 
 def mcmc_edges_only_search(
@@ -3764,8 +2961,8 @@ def check_convergence(all_chain_stats: List[Dict], rhat_threshold: float = 1.05)
 
 def plot_mcmc_traces(
     all_stats: List[Dict],
-    # burn_in: int,
-    # thin: int,
+    burn_in: int,
+    thin: int,
     title: str,
     output_path: str
 ):
@@ -3782,19 +2979,13 @@ def plot_mcmc_traces(
     fig, ax = plt.subplots(figsize=(12, 7))
 
     for i, stats in enumerate(all_stats):
-        full_scores = stats.get('all_scores_trace', [])
-        if not full_scores:
-            print(f"Warning: Chain {i+1} missing 'all_scores_trace'. Skipping.")
+        scores = stats.get('scores', [])
+        if not scores:
             continue
-        # scores = stats.get('scores', [])
-        # if not scores:
-        #     continue
-
-        iterations = range(len(full_scores))
         
         # Calculate the actual iteration numbers for the x-axis
-        # iterations = range(burn_in, burn_in + len(scores) * thin, thin)
-        ax.plot(iterations, full_scores, label=f'Chain {i+1}', alpha=0.8)
+        iterations = range(burn_in, burn_in + len(scores) * thin, thin)
+        ax.plot(iterations, scores, label=f'Chain {i+1}', alpha=0.8)
 
     ax.set_title(title, fontsize=16)
     ax.set_xlabel("MCMC Iteration", fontsize=12)
@@ -3808,173 +2999,138 @@ def plot_mcmc_traces(
     print(f"📈 Plot saved to {output_path}")
 
 
-def process_case( # This function REPLACES your old `process_case`
-    map_idx: int, 
-    type_num: int, 
-    cells_n: int,
-    priors: "Priors", 
-    iters: int, 
-    restarts: int,  # This is now n_chains for Phase 1
-    log_dir: Optional[str] = None,
-    tree_kind: str = "graph", 
-    n_jobs: Optional[int] = None,
-    unit_drop_edges: bool = False # Make sure this is passed
-):
-    """
-    Processes a single simulation case using the 
-    "MCMC-Z -> Viterbi Flow -> MST" hybrid algorithm.
-    """
-    
-    # --- 0. Setup ---
-    print(f"\n{'='*80}")
-    print(f"=== Processing Case: type_{type_num}, map {map_idx:04d}, cells_{cells_n} ===")
-    print(f"=== Sampler: MCMC-Z (Phase 1) + Viterbi Flow (Phase 2) ===")
-    print(f"=== k={priors.fixed_k}, iters={iters}, chains={restarts} ===")
-    print(f"{'='*80}")
-
+def process_case(map_idx: int, type_num: int, cells_n: int,
+                 priors, iters=100, restarts=5, log_dir: Optional[str]=None,
+                 tree_kind: str = "graph", n_jobs: Optional[int] = None):
+    # Resolve and validate all inputs (will print what it tries)
     fate_map_path, idx4 = build_fate_map_path(map_idx, type_num, tree_kind=tree_kind)
     tree_paths, meta_paths = build_tree_and_meta_paths(map_idx, type_num, cells_n, tree_kind=tree_kind)
 
+    # load trees + maps
     trees, leaf_type_maps, S = read_trees_and_maps(tree_paths, meta_paths)
-    all_B_sets = [compute_B_sets(tree, ltm) for tree, ltm in zip(trees, leaf_type_maps)]
 
-    # --- Ground Truth Scoring (Unchanged) ---
-    ground_truth_sets, gt_loss, gt_Z_active, gt_edges = score_given_map_and_trees(
-        fate_map_path, trees, meta_paths,
-        fixed_k=priors.fixed_k,
-        unit_drop_edges=unit_drop_edges
-    )
-    
-    # --- 1. Prepare for MCMC (Unchanged) ---
+    # run MAP search
+    # a compact candidate pool keeps things fast & well-mixed
     print_fitch_potency_probs_once(
         S, trees, leaf_type_maps,
         header=f"\n[Potency ranking] type_{type_num}, map {idx4}, cells_{cells_n}"
     )
+
     pool = collect_fitch_multis(S, trees, leaf_type_maps)
+
+    # <<<--- CHANGE: Compute Fitch probabilities and convert to a dictionary --->>>
     fitch_probs_list = compute_fitch_potency_probs(S, trees, leaf_type_maps)
     fitch_probs_dict = {p: prob for p, prob in fitch_probs_list}
 
-    # --- 2. Phase 1: Run MCMC for Z_map ---
-    # This uses your *existing* Z-only MCMC function
-    print("\n--- Phase 1: Running MCMC to find best Potency Sets (Z) ---")
+    # NEW CALL
+    # The 'restarts' parameter now controls the number of parallel chains
     bestF_Z, best_score_Z, all_stats_Z = run_mcmc_only_Z_parallel(
         S=S,
         trees=trees,
         leaf_type_maps=leaf_type_maps,
-        # all_B_sets=all_B_sets,
         priors=priors,
-        unit_drop_edges=unit_drop_edges, # Pass this along
+        unit_drop_edges=False,
         fixed_k=priors.fixed_k if priors.potency_mode == "fixed_k" else None,
         steps=iters,
         burn_in=(iters*15)//100,
         thin=10,
-        base_seed=123 + map_idx + cells_n,
+        base_seed=123,
         candidate_pool=pool,
-        block_swap_sizes=(1,), # Use (1,) for faster, simpler swaps
-        n_chains=restarts,
+        block_swap_sizes=(1, 2, 3),
+        n_chains= min(os.cpu_count() - 1, restarts),  # Use the 'restarts' argument to set the number of chains
         fitch_probs = fitch_probs_dict
     )
 
     if all_stats_Z and log_dir:
         plot_mcmc_traces(
             all_stats=all_stats_Z,
+            burn_in=(iters * 15) // 100,
+            thin=10,
             title=f"MCMC Trace for Potency Sets (Z) - Map {idx4}, Cells {cells_n}",
             output_path=os.path.join(log_dir, f"trace_Z_type{type_num}_{idx4}_cells{cells_n}.png")
         )
 
-    if bestF_Z is None:
-        print("[ERROR] MCMC-Z Phase 1 failed to find a structure.")
-        raise RuntimeError("MCMC-Z failed")
-        
-    Z_map = bestF_Z.Z_active
-    print(f"--- Phase 1 Complete. Best Z-only score: {best_score_Z:.4f} ---")
+    # iters = (iters*7)/2
 
-    # --- 3. Phase 2: Create F_full ---
-    print("\n--- Phase 2: Building fully-connected graph (F_full) ---")
-    A_full = _full_edges_for_Z(Z_map, unit_drop_edges)
-    F_full = Structure(S, Z_map, A_full, unit_drop_edges)
-    print(f"F_full has {len(Z_map)} nodes and {len(A_full)} admissible edges.")
-
-    # --- 4. Phase 3: Calculate Viterbi Flow ---
-    viterbi_flow = calculate_viterbi_flow(
-        trees, F_full, all_B_sets, leaf_type_maps
+    bestF, best_score, all_chain_stats = run_mcmc_only_A_parallel(
+        S=S,
+        trees=trees,
+        leaf_type_maps=leaf_type_maps,
+        priors=priors,
+        unit_drop_edges=False,
+        fixed_k=priors.fixed_k if priors.potency_mode == "fixed_k" else None,
+        steps=iters,
+        burn_in=(iters*15)//100,
+        thin=10,
+        base_seed=123,
+        candidate_pool=pool,
+        block_swap_sizes=(1, 2, 3),
+        n_chains= min(os.cpu_count() - 1, restarts),  # Use the 'restarts' argument to set the number of chains
+        Z = bestF_Z.Z_active
     )
-    
-    if not viterbi_flow:
-        print("[ERROR] Viterbi flow calculation returned empty. Cannot build A_map.")
-        raise RuntimeError("Viterbi flow failed")
 
-    # --- 5. Phase 4: Select A_map ---
-    S_nodes = {frozenset([t]) for t in S} # Get the set of singletons
-    A_map_final = build_A_map_from_flow(
-        viterbi_flow, 
-        Z_map,
-        S_nodes, # <-- ADD THIS ARGUMENT
-        z_score_threshold=1.5 # You can tune this
-    )
-    
-    # --- 6. Final Scoring and Reporting ---
-    print("\n--- Final Scoring ---")
-    bestF_final = Structure(S, Z_map, A_map_final, unit_drop_edges)
-    
-    # Score this final structure
-    # final_logp_Z = priors.log_prior_Z(S, Z_map)
-    # final_num_admiss = len(A_full) # Num admissible edges for this Z
-    # final_logp_A = priors.log_prior_A(
-    #     Z_map, A_map_final, unit_drop_edges, final_num_admiss
-    # )
+    if all_chain_stats and log_dir:
+        plot_mcmc_traces(
+            all_stats=all_chain_stats,
+            burn_in=(iters * 15) // 100,
+            thin=10,
+            title=f"MCMC Trace for Edges (A) - Map {idx4}, Cells {cells_n}",
+            output_path=os.path.join(log_dir, f"trace_A_type{type_num}_{idx4}_cells{cells_n}.png")
+        )
 
-    # final_log_L = get_log_likelihood(
-    #     bestF_final, trees, leaf_type_maps, all_B_sets
-    # )
-    
-    # if not math.isfinite(final_logp_Z): final_logp_Z = 0 # Handle -inf prior
-    # if not math.isfinite(final_logp_A): final_logp_A = 0 # Handle -inf prior
-    
-    # best_score_final = final_logp_Z + final_logp_A + final_log_L
+    # For compatibility with your existing result processing,
+    # you can get the stats of the best chain if needed,
+    # or analyze all_chain_stats for convergence.
+    # For now, let's just get the acceptance rate from the first chain as an example.
+    stats = all_chain_stats[0] if all_chain_stats else {}
 
-    best_score_final, _ = score_structure(bestF_final, trees, leaf_type_maps, priors)
+    print("MCMC accept rate:", stats["accept_rate"])
+    # posterior inclusion frequency of each candidate potency:
+    incl = stats["inclusion"]
 
-    # print(f"Final Log P(Z): {final_logp_Z:.4f}")
-    # print(f"Final Log P(A|Z): {final_logp_A:.4f} ({len(A_map_final)} edges)")
-    print(f"Final score (with edges): {best_score_final:.4f}")
-    
-    # print(f"\n=== BEST MAP (Hybrid) for type_{type_num}, map {idx4}, cells_{cells_n} ===")
-    # multi_sorted = sorted([P for P in bestF_final.Z_active if len(P) >= 2],
-    #                       key=lambda x: (len(x), tuple(sorted(list(x)))))
-    # print("Active potencies (multi-type):")
-    # for P in multi_sorted: print("  ", pot_str(P))
-    
-    # print("\nEdges:")
-    # edges = sorted([e for e, v in bestF_final.A.items() if v == 1],
-    #                key=lambda e: (len(e[0]), tuple(sorted(list(e[0]))), pot_str(e[1])))
-    # for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
+    print(f"\n=== BEST MAP for type_{type_num}, map {idx4}, cells_{cells_n} ===")
+    multi_sorted = sorted([P for P in bestF.Z_active if len(P) >= 2],
+                          key=lambda x: (len(x), tuple(sorted(list(x)))))
+    print("Active potencies (multi-type):")
+    for P in multi_sorted: print("  ", pot_str(P))
+    print("Singletons (always active):")
+    for t in S: print("  ", "{" + t + "}")
+
+    print("\nEdges:")
+    edges = sorted([e for e, v in bestF.A.items() if v == 1],
+                   key=lambda e: (len(e[0]), len(e[1]), tuple(sorted(list(e[0]))), tuple(sorted(list(e[1])))))
+    for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
 
     print("\nScores:")
-    print(f"  Log Posterior (Pred): {best_score_final:.6f}")
-    print(f"  Log Posterior (GT):   {gt_loss:.6f}")
+    print(f"  log posterior: {best_score:.6f}")
+    # for i, lg in enumerate(per_tree_logs, 1):
+    #     print(f"  Tree {i} log P(T|F*): {lg:.6f}")
 
-    # --- Potency Set Metrics ---
-    predicted_sets = {p for p in bestF_final.Z_active if len(p) > 1}
+    # --- Ground truth scoring ---
+    predicted_sets = {p for p in bestF.Z_active if len(p) > 1}
+
+    ground_truth_sets, gt_loss, gt_Z_active, gt_edges= score_given_map_and_trees(
+        fate_map_path, trees, meta_paths, fixed_k=priors.fixed_k
+    )
+
     pretty_print_sets("Predicted Sets", predicted_sets)
     pretty_print_sets("Ground Truth Sets", ground_truth_sets)
-    print("\nPredicted edges")
-    edges = sorted([e for e, v in bestF_final.A.items() if v == 1],
-                   key=lambda e: (len(e[0]), tuple(sorted(list(e[0]))), pot_str(e[1])))
-    for (u, v) in sorted(edges, key=lambda e: (len(e[0]), tuple(sorted(e[0])), len(e[1]), tuple(sorted(e[1])))):
-        print(f"{sorted(list(u))} -> {sorted(list(v))}")
-    # for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
+
     print("\n=== Ground Truth Directed Edges ===")
     for (u, v) in sorted(gt_edges, key=lambda e: (len(e[0]), tuple(sorted(e[0])), len(e[1]), tuple(sorted(e[1])))):
         print(f"{sorted(list(u))} -> {sorted(list(v))}")
-    jd = jaccard_distance(predicted_sets, ground_truth_sets)
-    print(f"Jaccard Distance (Potency Sets): {jd:.6f}")
 
-    # --- Edge Set Metrics ---
-    pred_edges = edges_from_A(bestF_final.A)
+    jd = jaccard_distance(predicted_sets, ground_truth_sets)
+    print("\n=== Jaccard Distance ===")
+    print(f"Jaccard Distance (Pred vs GT): {jd:.6f}")
+    print(f"Predicted map's loss: {best_score:.6f}")
+    print(f"Ground truth's loss: {gt_loss:.6f}")
+
+    # --- EDGE METRICS (Predicted vs Ground Truth) ---
+    pred_edges = edges_from_A(bestF.A)
     edge_jacc = jaccard_distance_edges(pred_edges, gt_edges)
-    
-    nodes_union = gt_Z_active | set(bestF_final.Z_active)
+
+    nodes_union = gt_Z_active | set(bestF.Z_active)
     im_d, im_s = ipsen_mikhailov_similarity(
         nodes_union = nodes_union,
         edges1 = pred_edges,
@@ -3987,7 +3143,14 @@ def process_case( # This function REPLACES your old `process_case`
     print(f"Ipsen–Mikhailov distance: {im_d:.6f}")
     print(f"Ipsen–Mikhailov similarity: {im_s:.6f}")
 
-    return jd, gt_loss, best_score_final, edge_jacc, im_s
+    # optional logs
+    # if log_dir:
+    #     os.makedirs(log_dir, exist_ok=True)
+    #     log_path = os.path.join(log_dir, f"log_type{type_num}_{idx4}_cells{cells_n}.txt")
+    #     with open(log_path, "w") as f:
+    #         f.write(f"type_{type_num}, map {idx4}, cells_{cells_n}\n")
+    #         f.write(f"Jaccard={jd:.6f}, GT loss={gt_loss:.6f}, Pred loss={best_score:.6f}\n")
+    return jd, gt_loss, best_score,edge_jacc,im_s
 
 def main_multi_type(type_nums=[10,14],
                     maps_start=17, maps_end=26,
@@ -4027,25 +3190,13 @@ def main_multi_type(type_nums=[10,14],
 if __name__ == "__main__":
     main_multi_type(
         type_nums=[6],
-        maps_start=2,
+        maps_start=6,
         maps_end=6,
-        cells_list=[50],
-        iters = 100,
+        cells_list=[100],
+        iters = 10,
         restarts = 7,
         fixed_k = 5,
-        out_csv="hello.csv",
+        out_csv="checking.csv",
         log_dir="prac",
         tree_kind="graph"   # or "bin_trees" or "graph"
     )
-    # main_multi_type(
-    #     type_nums=[10],
-    #     maps_start=2,
-    #     maps_end=6,
-    #     cells_list=[50],
-    #     iters = 10,
-    #     restarts = 7,
-    #     fixed_k = 9,
-    #     out_csv="viterbi_updated_10_2_6_50.csv",
-    #     log_dir="prac",
-    #     tree_kind="graph"   # or "bin_trees" or "graph"
-    # )

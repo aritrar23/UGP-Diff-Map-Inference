@@ -3808,6 +3808,80 @@ def plot_mcmc_traces(
     print(f"📈 Plot saved to {output_path}")
 
 
+def detect_elbow_and_plot(k_values, nll_values, exp_scores, map_idx, cells_n, type_num, output_dir="plots_k_search"):
+    """
+    1. Detects Elbow (Kneedle) on NLL curve.
+    2. Detects Minima on Exponential Score curve.
+    3. Plots both on dual axes.
+    """
+    if not k_values or len(k_values) < 3:
+        return k_values[0] if k_values else 3
+
+    # --- A. Detect Elbow on NLL ---
+    # Normalize
+    k_norm = (np.array(k_values) - min(k_values)) / (max(k_values) - min(k_values) + 1e-9)
+    nll_norm = (np.array(nll_values) - min(nll_values)) / (max(nll_values) - min(nll_values) + 1e-9)
+    
+    # Distance from line connecting start->end
+    vec_line = np.array([1.0, nll_norm[-1] - nll_norm[0]])
+    vec_line = vec_line / np.linalg.norm(vec_line)
+    
+    distances = []
+    for i in range(len(k_norm)):
+        vec_point = np.array([k_norm[i], nll_norm[i] - nll_norm[0]])
+        distances.append(np.cross(vec_line, vec_point)) # Max distance below line
+    
+    elbow_idx = np.argmax(np.abs(distances))
+    elbow_k = k_values[elbow_idx]
+
+    # --- B. Detect Minima on Exponential Score ---
+    min_exp_idx = np.argmin(exp_scores)
+    exp_k = k_values[min_exp_idx]
+
+    # --- C. Plotting ---
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        fig, ax1 = plt.subplots(figsize=(10, 6))
+
+        # Plot 1: NLL (Left Axis)
+        color = 'tab:blue'
+        ax1.set_xlabel('Number of Potencies (k)')
+        ax1.set_ylabel('Negative Log-Likelihood (NLL)', color=color)
+        ax1.plot(k_values, nll_values, 'o-', color=color, label='NLL (Data Fit)')
+        ax1.tick_params(axis='y', labelcolor=color)
+        
+        # Highlight Elbow
+        ax1.plot(elbow_k, nll_values[elbow_idx], 'ro', markersize=10, 
+                 label=f'Elbow (k={elbow_k})', markeredgecolor='black')
+
+        # Plot 2: Exponential Score (Right Axis)
+        ax2 = ax1.twinx()  
+        color = 'tab:orange'
+        ax2.set_ylabel('Penalized Score (Exp)', color=color)
+        ax2.plot(k_values, exp_scores, 's--', color=color, alpha=0.6, label='Penalized Score')
+        ax2.tick_params(axis='y', labelcolor=color)
+
+        # Highlight Exp Minima
+        ax2.plot(exp_k, exp_scores[min_exp_idx], 'D', color='green', markersize=10, 
+                 label=f'Exp Min (k={exp_k})', markeredgecolor='black')
+
+        plt.title(f"K-Search: Map {map_idx} (Type {type_num}, {cells_n} Cells)")
+        fig.tight_layout()
+        
+        # Combine legends
+        lines, labels = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax2.legend(lines + lines2, labels + labels2, loc='upper center')
+
+        filename = f"k_search_map{map_idx:04d}_type{type_num}_cells{cells_n}.png"
+        save_path = os.path.join(output_dir, filename)
+        plt.savefig(save_path)
+        plt.close()
+        print(f"[Plot] Saved search plot to {save_path}")
+
+    return elbow_k, exp_k
+
+
 def process_case( # This function REPLACES your old `process_case`
     map_idx: int, 
     type_num: int, 
@@ -3986,53 +4060,436 @@ def process_case( # This function REPLACES your old `process_case`
     print(f"Jaccard distance (edges): {edge_jacc:.6f}")
     print(f"Ipsen–Mikhailov distance: {im_d:.6f}")
     print(f"Ipsen–Mikhailov similarity: {im_s:.6f}")
+    
+    # We use a helper (defined below) or just manually subtract the prior if you know it.
+    # But re-scoring is safer to be exact:
+    raw_log_likelihood = 0.0
+    for root, ltm in zip(trees, leaf_type_maps):
+         B_sets = compute_B_sets(root, ltm)
+         C_log = dp_tree_root_table(root, bestF_final.labels_list, bestF_final.Reach, B_sets)
+         raw_log_likelihood += tree_marginal_from_root_table_log(C_log)
 
-    return jd, gt_loss, best_score_final, edge_jacc, im_s
+    # 2. Return this new value at the end of the tuple
+    return jd, gt_loss, best_score_final, edge_jacc, im_s, raw_log_likelihood
+
+
+# def find_best_k_combined(
+#     map_idx, type_num, cells_n, 
+#     iters, restarts, log_dir, tree_kind,
+#     lambda_val=50.0, alpha=0.5,
+#     start_k = 3,
+#     end_k = 7 
+# ):
+#     results_map = {} 
+#     k_list = []
+#     nll_list = []
+#     exp_score_list = []
+    
+#     print(f"\n{'#'*60}")
+#     print(f"### SEARCHING OPTIMAL K (Combined: Elbow + Exponential) ###")
+#     print(f"{'#'*60}\n")
+
+#     # Range of K to test
+#     k_range = range(start_k, end_k + 1) 
+
+#     for k in k_range:
+#         print(f"\n>>> [K-SEARCH] Testing k={k}...")
+        
+#         curr_priors = Priors(potency_mode="fixed_k", fixed_k=k, rho=0.2)
+
+#         try:
+#             # Run process_case with unit_drop_edges=False
+#             jd, gt_loss, post_score, edge_jacc, im_s, raw_ll = process_case(
+#                 map_idx, type_num, cells_n, curr_priors, 
+#                 iters=iters, restarts=restarts, log_dir=log_dir,
+#                 tree_kind=tree_kind, n_jobs=os.cpu_count()-1,
+#                 unit_drop_edges=False 
+#             )
+            
+#             # 1. Store NLL
+#             nll = -raw_ll 
+            
+#             # 2. Calculate Exp Score
+#             # --- CALCULATE EXPONENTIAL PENALTY ---
+#             nll = -raw_ll  # NLL is positive
+#             penalty = lambda_val * math.exp(alpha * k)
+#             exp_score = nll + penalty
+
+#             # Store
+#             k_list.append(k)
+#             nll_list.append(nll)
+#             exp_score_list.append(exp_score)
+#             results_map[k] = (jd, gt_loss, post_score, edge_jacc, im_s)
+            
+#             print(f"   [RESULT k={k}] NLL: {nll:.2f} | ExpScore: {exp_score:.2f}")
+
+#         except Exception as e:
+#             print(f"   [Error] Failed at k={k}: {e}")
+#             traceback.print_exc()
+#             continue
+
+#     if not k_list:
+#         print("[ERROR] No valid results found during k-search.")
+#         return None
+
+#     # --- Detect & Plot ---
+#     # This generates the plot with both curves
+#     elbow_k, exp_k = detect_elbow_and_plot(
+#         k_list, nll_list, exp_score_list, 
+#         map_idx, cells_n, type_num, 
+#         output_dir="plots_k_search"
+#     )
+    
+#     print(f"\n{'='*40}")
+#     print(f"SUGGESTION (Elbow): k={elbow_k}")
+#     print(f"SUGGESTION (Exp):   k={exp_k}")
+    
+#     # DECISION LOGIC: 
+#     # Usually Exp penalty is safer against overfitting. 
+#     # If they differ significantly, you might prefer the lower k.
+#     final_k = exp_k 
+    
+#     print(f"--> FINAL CHOICE: k={final_k}")
+#     print(f"{'='*40}\n")
+    
+#     return {
+#         'k': final_k, 
+#         'elbow_k': elbow_k,
+#         'metrics': results_map[final_k]
+#     }
+
+def find_best_k_combined(
+    map_idx, type_num, cells_n, 
+    iters, restarts, log_dir, tree_kind,
+    lambda_val=50.0, alpha=0.5,
+    start_k = 3,
+    end_k = 7 
+):
+    detailed_results = [] # Store everything here
+    
+    k_list_for_plot = []
+    nll_list_for_plot = []
+    exp_score_list_for_plot = []
+    
+    print(f"\n{'#'*60}")
+    print(f"### SEARCHING OPTIMAL K (Combined: Elbow + Exponential) ###")
+    print(f"{'#'*60}\n")
+
+    k_range = range(start_k, end_k + 1) 
+
+    for k in k_range:
+        print(f"\n>>> [K-SEARCH] Testing k={k}...")
+        
+        curr_priors = Priors(potency_mode="fixed_k", fixed_k=k, rho=0.2)
+
+        try:
+            # Run process_case with unit_drop_edges=False
+            jd, gt_loss, post_score, edge_jacc, im_s, raw_ll = process_case(
+                map_idx, type_num, cells_n, curr_priors, 
+                iters=iters, restarts=restarts, log_dir=log_dir,
+                tree_kind=tree_kind, n_jobs=os.cpu_count()-1,
+                unit_drop_edges=False 
+            )
+            
+            # 1. Stats
+            nll = -raw_ll 
+            penalty = lambda_val * math.exp(alpha * k)
+            exp_score = nll + penalty
+
+            # 2. Store for plotting
+            k_list_for_plot.append(k)
+            nll_list_for_plot.append(nll)
+            exp_score_list_for_plot.append(exp_score)
+
+            # 3. Store detailed result
+            detailed_results.append({
+                'k': k,
+                'nll': nll,
+                'exp_score': exp_score,
+                'metrics': (jd, gt_loss, post_score, edge_jacc, im_s)
+            })
+            
+            print(f"   [RESULT k={k}] NLL: {nll:.2f} | ExpScore: {exp_score:.2f}")
+
+        except Exception as e:
+            print(f"   [Error] Failed at k={k}: {e}")
+            traceback.print_exc()
+            continue
+
+    if not detailed_results:
+        print("[ERROR] No valid results found during k-search.")
+        return None
+
+    # --- Detect & Plot ---
+    # This generates the plot and calculates the winners
+    elbow_k, exp_k = detect_elbow_and_plot(
+        k_list_for_plot, nll_list_for_plot, exp_score_list_for_plot, 
+        map_idx, cells_n, type_num, 
+        output_dir="plots_k_search"
+    )
+    
+    print(f"\n{'='*40}")
+    print(f"SUGGESTION (Elbow): k={elbow_k}")
+    print(f"SUGGESTION (Exp):   k={exp_k}")
+    print(f"{'='*40}\n")
+    
+    # Return everything needed for the full CSV log
+    return {
+        'elbow_k': elbow_k,
+        'exp_k': exp_k,
+        'all_data': detailed_results
+    }
+
+# --- <<< START CHANGE 2: New Search Function >>> ---
+def find_best_k_exponential(
+    map_idx, type_num, cells_n, 
+    iters, restarts, log_dir, tree_kind, 
+    lambda_val=50.0, # TUNING KNOB 1: Base penalty size
+    alpha=0.5,        # TUNING KNOB 2: How fast penalty grows (0.5 is gentle, 1.0 is strict)
+    start_k = 3,
+    end_k = 8
+):
+    """
+    Loops over k (3 to 10), runs process_case, and selects k minimizes:
+    Score = -Raw_LogLikelihood + lambda * exp(alpha * k)
+    """
+    results = []
+    print(f"\n{'#'*60}")
+    print(f"### SEARCHING OPTIMAL K (Exponential Penalty) ###")
+    print(f"### Hyperparams: Lambda={lambda_val}, Alpha={alpha}")
+    print(f"{'#'*60}\n")
+
+    # Range of K to test. Usually 3 to 10 is sufficient for differentiation maps.
+    k_range = range(start_k, end_k+1) 
+
+    for k in k_range:
+        print(f"\n>>> [K-SEARCH] Testing k={k}...")
+        
+        # Create specific prior for this k
+        curr_priors = Priors(potency_mode="fixed_k", fixed_k=k, rho=0.2)
+
+        try:
+            # Run the existing process case
+            # Note: We use unit_drop_edges=False (default behavior) or pass it if needed
+            jd, gt_loss, post_score, edge_jacc, im_s, raw_ll = process_case(
+                map_idx, type_num, cells_n, curr_priors, 
+                iters=iters, restarts=restarts, log_dir=log_dir,
+                tree_kind=tree_kind, n_jobs=os.cpu_count()-1,
+                unit_drop_edges=False 
+            )
+        except Exception as e:
+            print(f"   [Error] Failed at k={k}: {e}")
+            traceback.print_exc()
+            continue
+
+        # --- CALCULATE EXPONENTIAL PENALTY ---
+        nll = -raw_ll  # NLL is positive
+        penalty = lambda_val * math.exp(alpha * k)
+        total_score = nll + penalty
+
+        print(f"   [RESULT k={k}] NLL: {nll:.2f} | Penalty: {penalty:.2f}")
+        print(f"   >>> Total Score (Lower is better): {total_score:.4f}")
+
+        results.append({
+            'k': k,
+            'score': total_score,
+            'metrics': (jd, gt_loss, post_score, edge_jacc, im_s)
+        })
+
+        # Early Stopping: If score gets significantly worse (> 300 points), stop.
+        # This assumes the curve is convex (U-shaped).
+        # if len(results) > 1:
+        #     best_so_far = min(r['score'] for r in results)
+        #     if total_score > best_so_far + 300:
+        #         print("   [STOP] Score is worsening significantly. Stopping search.")
+        #         break
+
+    if not results:
+        print("[ERROR] No valid results found during k-search.")
+        return None
+
+    # Find the winner
+    best_result = min(results, key=lambda x: x['score'])
+    print(f"\n{'='*40}")
+    print(f"WINNER: k={best_result['k']} (Score: {best_result['score']:.2f})")
+    print(f"{'='*40}\n")
+    
+    return best_result
+# --- <<< END CHANGE 2 >>> ---
+
+# def main_multi_type(type_nums=[10,14],
+#                     maps_start=17, maps_end=26,
+#                     cells_list=[50,100,200],
+#                     iters = 50,
+#                     restarts = 4,
+#                     fixed_k = 5,
+#                     out_csv="results_types_6_10_14_maps_17_26.csv",
+#                     log_dir="logs_types",
+#                     tree_kind: str = "graph"):
+#     random.seed(7)
+#     priors = Priors(potency_mode="fixed_k", fixed_k=fixed_k, rho=0.2)
+#     results = []
+
+#     with open(out_csv, "w", newline="") as f:
+#         writer = csv.writer(f)
+#         writer.writerow(["Type","MapIdx","Cells","Jaccard","GT Loss","Pred Loss","Edge_Jaccard","IM_similarity"])
+
+#         for t in type_nums:
+#             for idx in range(maps_start, maps_end+1):
+#                 for cells in cells_list:
+#                     try:
+#                         jd, gt_loss, pred_loss, edge_jacc, im_s = process_case(
+#                             idx, t, cells, priors,
+#                             iters=iters, restarts=restarts, log_dir=log_dir,
+#                             tree_kind=tree_kind, n_jobs= os.cpu_count()-1  # start single-process
+#                         )
+#                         writer.writerow([t, idx, cells, f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}", f"{edge_jacc:.6f}", f"{im_s:.6f}"])
+#                         results.append((t, idx, cells, jd, gt_loss, pred_loss, edge_jacc, im_s))
+#                     except Exception as e:
+#                         print(f"[WARN] Failed type_{t} map {idx:04d} cells_{cells}: {repr(e)}")
+#                         traceback.print_exc()
+#                         writer.writerow([t, idx, cells, "ERROR","ERROR","ERROR", "ERROR","ERROR"])
+#                         results.append((t, idx, cells, None,None,None,None,None))
+
+# def main_multi_type(type_nums=[10,14],
+#                     maps_start=17, maps_end=26,
+#                     cells_list=[50,100,200],
+#                     iters = 50,
+#                     restarts = 4,
+#                     start_k = 3,
+#                     end_k = 7,
+#                     out_csv="results_combined.csv",
+#                     log_dir="logs_types",
+#                     tree_kind: str = "graph"):
+    
+#     random.seed(7)
+#     # Ensure plot dir exists
+#     if not os.path.exists("plots_k_search"):
+#         os.makedirs("plots_k_search")
+    
+#     # Hyperparams for Exponential Penalty
+#     LAMBDA_VAL = 2.5
+#     ALPHA_VAL = 0.75
+
+#     with open(out_csv, "w", newline="") as f:
+#         writer = csv.writer(f)
+#         # Added 'Elbow_k' to CSV headers
+#         writer.writerow(["Type","MapIdx","Cells","Best_k","Elbow_k","Jaccard","GT Loss","Pred Loss","Edge_Jaccard","IM_similarity"])
+
+#         for t in type_nums:
+#             for idx in range(maps_start, maps_end+1):
+#                 for cells in cells_list:
+#                     try:
+#                         # --- CALL COMBINED SEARCH ---
+#                         best_res = find_best_k_combined(
+#                             idx, t, cells,
+#                             iters=iters, restarts=restarts, log_dir=log_dir,
+#                             tree_kind=tree_kind,
+#                             lambda_val=LAMBDA_VAL, alpha=ALPHA_VAL
+#                         )
+
+#                         if best_res:
+#                             bk = best_res['k']
+#                             ek = best_res['elbow_k']
+#                             (jd, gt_loss, pred_loss, edge_jacc, im_s) = best_res['metrics']
+                            
+#                             writer.writerow([t, idx, cells, bk, ek, f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}", f"{edge_jacc:.6f}", f"{im_s:.6f}"])
+#                             print(f"[SAVED] Map {idx} Cells {cells} -> Chosen k={bk} (Elbow was {ek})")
+#                         else:
+#                             writer.writerow([t, idx, cells, "FAIL", "FAIL", "FAIL","FAIL","FAIL", "FAIL","FAIL"])
+
+#                     except Exception as e:
+#                         print(f"[WARN] Failed type_{t} map {idx:04d} cells_{cells}: {repr(e)}")
+#                         traceback.print_exc()
+#                         writer.writerow([t, idx, cells, "ERROR", "ERROR", "ERROR", "ERROR","ERROR", "ERROR","ERROR"])
 
 def main_multi_type(type_nums=[10,14],
                     maps_start=17, maps_end=26,
                     cells_list=[50,100,200],
                     iters = 50,
                     restarts = 4,
-                    fixed_k = 5,
-                    out_csv="results_types_6_10_14_maps_17_26.csv",
+                    start_k = 3,
+                    end_k = 7,
+                    out_csv="hello.csv",
                     log_dir="logs_types",
                     tree_kind: str = "graph"):
+    
     random.seed(7)
-    priors = Priors(potency_mode="fixed_k", fixed_k=fixed_k, rho=0.2)
-    results = []
+    if not os.path.exists("plots_k_search"):
+        os.makedirs("plots_k_search")
+    
+    # Hyperparams for Exponential Penalty (Targeting k=5 behavior)
+    LAMBDA_VAL = 2.5
+    ALPHA_VAL = 0.75
 
     with open(out_csv, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["Type","MapIdx","Cells","Jaccard","GT Loss","Pred Loss","Edge_Jaccard","IM_similarity"])
+        
+        # <<< CHANGE: Comprehensive Header >>>
+        writer.writerow([
+            "Type", "MapIdx", "Cells", "k", 
+            "NLL", "Exp_Score", 
+            "Is_Exp_Optimal", "Is_Elbow", # Flags to identify the winners
+            "Jaccard", "GT_Loss", "Pred_Loss", "Edge_Jaccard", "IM_similarity"
+        ])
 
         for t in type_nums:
             for idx in range(maps_start, maps_end+1):
                 for cells in cells_list:
                     try:
-                        jd, gt_loss, pred_loss, edge_jacc, im_s = process_case(
-                            idx, t, cells, priors,
+                        # --- CALL COMBINED SEARCH ---
+                        # Returns dictionary with 'elbow_k', 'exp_k', and list 'all_data'
+                        search_result = find_best_k_combined(
+                            idx, t, cells,
                             iters=iters, restarts=restarts, log_dir=log_dir,
-                            tree_kind=tree_kind, n_jobs= os.cpu_count()-1  # start single-process
+                            tree_kind=tree_kind,
+                            lambda_val=LAMBDA_VAL, alpha=ALPHA_VAL,
+                            start_k=start_k, end_k=end_k
                         )
-                        writer.writerow([t, idx, cells, f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}", f"{edge_jacc:.6f}", f"{im_s:.6f}"])
-                        results.append((t, idx, cells, jd, gt_loss, pred_loss, edge_jacc, im_s))
+
+                        if search_result:
+                            best_exp_k = search_result['exp_k']
+                            best_elbow_k = search_result['elbow_k']
+                            
+                            # Loop through ALL k values tested and write them
+                            for res in search_result['all_data']:
+                                k_curr = res['k']
+                                nll = res['nll']
+                                exp_score = res['exp_score']
+                                (jd, gt_loss, pred_loss, edge_jacc, im_s) = res['metrics']
+                                
+                                # Determine flags
+                                is_exp_optimal = (k_curr == best_exp_k)
+                                is_elbow = (k_curr == best_elbow_k)
+                                
+                                writer.writerow([
+                                    t, idx, cells, k_curr, 
+                                    f"{nll:.4f}", f"{exp_score:.4f}", 
+                                    is_exp_optimal, is_elbow,
+                                    f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}", f"{edge_jacc:.6f}", f"{im_s:.6f}"
+                                ])
+                                
+                            print(f"[SAVED ALL K] Map {idx} Cells {cells} (Winners: Exp={best_exp_k}, Elbow={best_elbow_k})")
+                        else:
+                            # Write a failure row if search returned completely empty
+                            writer.writerow([t, idx, cells, "FAIL", "FAIL", "FAIL", "FAIL", "FAIL", "FAIL", "FAIL", "FAIL", "FAIL", "FAIL"])
+
                     except Exception as e:
                         print(f"[WARN] Failed type_{t} map {idx:04d} cells_{cells}: {repr(e)}")
                         traceback.print_exc()
-                        writer.writerow([t, idx, cells, "ERROR","ERROR","ERROR", "ERROR","ERROR"])
-                        results.append((t, idx, cells, None,None,None,None,None))
+                        writer.writerow([t, idx, cells, "ERROR", "ERROR", "ERROR", "ERROR", "ERROR", "ERROR", "ERROR", "ERROR", "ERROR", "ERROR"])
 
 
 if __name__ == "__main__":
     main_multi_type(
         type_nums=[6],
         maps_start=2,
-        maps_end=6,
+        maps_end=11,
         cells_list=[50],
-        iters = 100,
+        iters = 10,
         restarts = 7,
-        fixed_k = 5,
+        start_k = 3,
+        end_k = 7,
         out_csv="hello.csv",
         log_dir="prac",
         tree_kind="graph"   # or "bin_trees" or "graph"
