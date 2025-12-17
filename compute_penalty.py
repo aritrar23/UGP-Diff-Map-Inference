@@ -6,7 +6,7 @@ import os
 # CONFIGURATION
 # ==========================================
 INPUT_CSV = "testing_data_nll.csv"
-TARGET_K = 5
+# TARGET_K = 5
 NUM_TREES = 5
 
 # Inputs configuration for Exact N calculation
@@ -124,6 +124,14 @@ def main():
 
     nll_matrix = pivot.to_numpy()
     k_vals = pivot.columns.to_numpy()
+
+    # 1b. Compute target k for each dataset from Type column
+    # For each (MapIdx, Cells) combo, we take the first Type (should be consistent)
+    type_series = df.groupby(['MapIdx', 'Cells'])['Type'].first()
+
+    # Align with pivot's index and convert to numpy
+    target_k_vector = type_series.loc[pivot.index].to_numpy() - 1  # target_k = Type - 1
+
     
     # 2. Calculate Exact N
     print("Calculating exact node counts (Total N) for all datasets...")
@@ -147,16 +155,17 @@ def main():
     # 4. Build Full Results Table
     map_indices = pivot.index.get_level_values('MapIdx')
     cell_counts = pivot.index.get_level_values('Cells')
-    is_correct = (predicted_ks == TARGET_K)
+    is_correct = (predicted_ks == target_k_vector)
     
     results_df = pd.DataFrame({
         'Map': map_indices,
         'Cells': cell_counts,
-        'Total_N': n_vector,        # <--- Added Total N
+        'Total_N': n_vector,
+        'Target_k': target_k_vector,
         'Pred_k': predicted_ks,
         'Correct': is_correct
     })
-    
+
     accuracy = np.mean(is_correct)
 
     print("\n" + "="*60)

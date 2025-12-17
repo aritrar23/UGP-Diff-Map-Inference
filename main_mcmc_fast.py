@@ -1847,7 +1847,69 @@ def calculate_viterbi_flow(
                 viterbi_flow[edge] += weight
                 
     return viterbi_flow
+
+def calculate_greedy_flow(
+    trees: List[TreeNode],
+    F_full: Structure, 
+    all_B_sets: List[Dict[TreeNode, Set[str]]], 
+    leaf_type_maps: List[Dict[str, str]],
+    num_cores: int = 1  # Kept for signature compatibility, but ignored
+) -> Dict[Tuple[FrozenSet[str], FrozenSet[str]], float]:
+    """
+    Calculates the flow w(P,Q) for all potential edges using 
+    GREEDY optimal labeling (faster than Viterbi) in serial.
+    """
+    print(f"Calculating flow w(P,Q) using Greedy Labeling (Serial)...")
+    viterbi_flow = defaultdict(float)
+    
+    # 1. Pre-calculate leaf counts for all nodes
+    leaf_counts_all_trees = []
+    for tree in trees:
+        counts = {}
+        def post_order_leaf_count(v):
+            if v.is_leaf():
+                counts[v] = 1
+                return 1
+            count = sum(post_order_leaf_count(u) for u in v.children)
+            counts[v] = count
+            return count
+        post_order_leaf_count(tree)
+        leaf_counts_all_trees.append(counts)
+
+    # 2. Iterate through trees serially
+    for tree, leaf_map, counts in zip(trees, leaf_type_maps, leaf_counts_all_trees):
+        # Compute B_sets
+        B_sets = compute_B_sets(tree, leaf_map)
         
+        # --- Use Greedy Labeling ---
+        # Returns: (labeling_dict, score)
+        labeling, score = greedy_bottom_up_labeling(
+            tree, 
+            F_full.labels_list, # Sorted list of Z_active
+            B_sets
+        )
+        
+        # If greedy search failed for this tree (score is -inf), skip it
+        if score == -math.inf:
+            continue
+            
+        # 3. Aggregate flow based on the labeling
+        for (v, u) in iter_edges(tree): # v=parent, u=child
+            P = labeling.get(v)
+            Q = labeling.get(u)
+            
+            if P is None or Q is None:
+                continue
+            
+            # If parent and child labels differ, it's a transition
+            if P != Q:
+                # Flow weighted by the size of the child's subtree (leaf count)
+                flow_weight = counts.get(u, 1)
+                viterbi_flow[(P, Q)] += flow_weight
+                
+    return viterbi_flow
+
+
 # ----------------------------
 # Scoring: log posterior
 # ----------------------------
@@ -4424,6 +4486,7 @@ def _worker_viterbi_flow(args):
             
     return local_flow
 
+
 def _worker_score_single_tree(args: tuple) -> float:
     """
     Worker function to score a single tree in parallel.
@@ -4589,10 +4652,11 @@ def score_given_map_and_trees(txt_path: str,
                               meta_paths: List[str], 
                               fixed_k: int,
                               unit_drop_edges: bool = False,
-                              num_cores: int = 1): # <--- Added argument
+                              num_cores: int = 1): 
     """
     Parses the input file and builds the structure F=(Z,A),
-    then scores the log-likelihood of the given trees PARALLELIZED.
+    then scores the log-likelihood of the given trees using 
+    GREEDY BOTTOM-UP SCORING.
     """
     objs = _read_json_objects_exact(txt_path)
     if len(objs) < 4:
@@ -4638,56 +4702,49 @@ def score_given_map_and_trees(txt_path: str,
     struct = Structure(S=S_all, Z_active=Z_active, A=A, unit_drop=unit_drop_edges)
     dummy_priors = Priors(potency_mode="fixed_k", fixed_k=fixed_k, rho=0.2)
 
-    # --- PARALLEL SCORING START ---
+    # --- GREEDY SCORING START ---
     
-    # 1. Calculate Prior (Fast, do on main thread)
+    # 1. Calculate Prior
     logp = dummy_priors.log_prior_Z(struct.S, struct.Z_active)
     if math.isfinite(logp):
         logp += dummy_priors.log_prior_A(struct.Z_active, struct.A, unit_drop=struct.unit_drop)
     else:
         # If prior is impossible, result is -inf immediately
+        print("Prior is -inf (Structure invalid under Prior constraints).")
         return {frozenset(members) for members in potency_def.values()}, float("-inf"), Z_active, edges_from_A(A)
 
-    # 2. Prepare Data for Workers
-    # We pack tuples of (tree, leaf_map, labels, Reach, prune_eps)
-    # We assume prune_eps = 0.0 as per your original code
-    tasks = [
-        (t, m, struct.labels_list, struct.Reach, 0.0) 
-        for t, m in zip(trees, leaf_type_maps)
-    ]
+    print(f"    ... scoring {len(trees)} trees using GREEDY scoring (Serial) ...")
 
-    # 3. Execute Parallel Viterbi/DP
-    print(f"    ... scoring {len(trees)} trees on {num_cores} cores ...")
-    
-    per_tree_likelihoods = []
-    
-    # Use max_workers=num_cores. 
-    # If num_cores=1, we can skip overhead, but Executor handles it fine.
-    with ProcessPoolExecutor(max_workers=num_cores) as executor:
-        # returns generator, cast to list to force execution
-        per_tree_likelihoods = list(executor.map(_worker_score_single_tree, tasks))
-
-    # 4. Combine Likelihood + Prior
-    # Note: Your original `score_structure` appends (tree_logL + logp) to the list.
-    # We replicate that exact behavior here.
     per_tree_logs = []
-    for tree_ll in per_tree_likelihoods:
-        if not math.isfinite(tree_ll):
+    
+    # Iterate through trees serially (Greedy is fast enough that parallel overhead often isn't worth it)
+    for i, (tree, ltm) in enumerate(zip(trees, leaf_type_maps)):
+        # Compute B_sets
+        B_sets = compute_B_sets(tree, ltm)
+        
+        # Run Greedy Solver
+        tree_logL = greedy_tree_log_likelihood(
+            tree,
+            struct.labels_list, # The sorted list of active potencies
+            B_sets
+        )
+        
+        if not math.isfinite(tree_logL):
             per_tree_logs.append(float("-inf"))
         else:
-            per_tree_logs.append(tree_ll + logp)
+            per_tree_logs.append(tree_logL + logp)
 
     total_ll = sum(per_tree_logs)
-    # --- PARALLEL SCORING END ---
+    # --- GREEDY SCORING END ---
 
-    print("\n=== Ground Truth Log-likelihoods (given F from map) ===")
+    print("\n=== Ground Truth Log-likelihoods (Greedy Score given F from map) ===")
     for i, lg in enumerate(per_tree_logs, 1):
         print(f"Tree {i}: log P(T|F) = {lg:.6f}")
     print(f"Total log-likelihood = {total_ll:.6f}")
 
     # Convert potency_def dict to set of frozensets
     potency_sets = {frozenset(members) for members in potency_def.values()}
-    gt_Z_active = set(Z_active)   
+    gt_Z_active = set(Z_active)    
     gt_edges = edges_from_A(A)
 
     return potency_sets, total_ll, gt_Z_active, gt_edges
@@ -4949,13 +5006,6 @@ def process_case( # This function REPLACES your old `process_case`
     trees, leaf_type_maps, S = read_trees_and_maps(tree_paths, meta_paths)
     all_B_sets = [compute_B_sets(tree, ltm) for tree, ltm in zip(trees, leaf_type_maps)]
 
-    # --- Ground Truth Scoring (Unchanged) ---
-    # ground_truth_sets, gt_loss, gt_Z_active, gt_edges = score_given_map_and_trees(
-    #     fate_map_path, trees, meta_paths,
-    #     fixed_k=priors.fixed_k,
-    #     unit_drop_edges=unit_drop_edges
-    # )
-
     ground_truth_sets, gt_loss, gt_Z_active, gt_edges = score_given_map_and_trees(
         fate_map_path, trees, meta_paths,
         fixed_k=priors.fixed_k,
@@ -5016,7 +5066,7 @@ def process_case( # This function REPLACES your old `process_case`
     print(f"F_full has {len(Z_map)} nodes and {len(A_full)} admissible edges.")
 
     # --- 4. Phase 3: Calculate Viterbi Flow ---
-    viterbi_flow = calculate_viterbi_flow(
+    viterbi_flow = calculate_greedy_flow(
         trees, F_full, all_B_sets, leaf_type_maps, num_cores=num_cores
     )
     
@@ -5037,46 +5087,20 @@ def process_case( # This function REPLACES your old `process_case`
     # print("\n--- Final Scoring ---")
     bestF_final = Structure(S, Z_map, A_map_final, unit_drop_edges)
     
-    # Score this final structure
-    # final_logp_Z = priors.log_prior_Z(S, Z_map)
-    # final_num_admiss = len(A_full) # Num admissible edges for this Z
-    # final_logp_A = priors.log_prior_A(
-    #     Z_map, A_map_final, unit_drop_edges, final_num_admiss
-    # )
-
-    # final_log_L = get_log_likelihood(
-    #     bestF_final, trees, leaf_type_maps, all_B_sets
-    # )
-    
-    # if not math.isfinite(final_logp_Z): final_logp_Z = 0 # Handle -inf prior
-    # if not math.isfinite(final_logp_A): final_logp_A = 0 # Handle -inf prior
-    
-    # best_score_final = final_logp_Z + final_logp_A + final_log_L
 
     print(f"Scoring final structure on {num_cores} cores...")
-    best_score_final, _ = score_structure_parallel(
-        bestF_final, trees, leaf_type_maps, priors, num_cores=num_cores
-    )    
+
+    # best_score_final, _ = score_structure_parallel(
+    #     bestF_final, trees, leaf_type_maps, priors, num_cores=num_cores
+    # )    
+
     best_greedy_score = score_structure_greedy(bestF_final, trees, leaf_type_maps, priors)
 
-    # print(f"Final Log P(Z): {final_logp_Z:.4f}")
-    # print(f"Final Log P(A|Z): {final_logp_A:.4f} ({len(A_map_final)} edges)")
-    print(f"Final score (with edges): {best_score_final:.4f}")
+    # print(f"Final score (with edges): {best_score_final:.4f}")
     print(f"Final greedy score (with edges): {best_greedy_score:.4f}")
-    
-    # print(f"\n=== BEST MAP (Hybrid) for type_{type_num}, map {idx4}, cells_{cells_n} ===")
-    # multi_sorted = sorted([P for P in bestF_final.Z_active if len(P) >= 2],
-    #                       key=lambda x: (len(x), tuple(sorted(list(x)))))
-    # print("Active potencies (multi-type):")
-    # for P in multi_sorted: print("  ", pot_str(P))
-    
-    # print("\nEdges:")
-    # edges = sorted([e for e, v in bestF_final.A.items() if v == 1],
-    #                key=lambda e: (len(e[0]), tuple(sorted(list(e[0]))), pot_str(e[1])))
-    # for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
 
     print("\nScores:")
-    print(f"  Log Posterior (Pred): {best_score_final:.6f}")
+    # print(f"  Log Posterior (Pred): {best_score_final:.6f}")
     print(f"  Log Posterior (GT):   {gt_loss:.6f}")
 
     # --- Potency Set Metrics ---
@@ -5112,6 +5136,8 @@ def process_case( # This function REPLACES your old `process_case`
     print(f"Ipsen–Mikhailov distance: {im_d:.6f}")
     print(f"Ipsen–Mikhailov similarity: {im_s:.6f}")
 
+    best_score_final = 0
+
     return jd, gt_loss, best_score_final, best_greedy_score, edge_jacc, im_s
 
 
@@ -5126,7 +5152,6 @@ def main_multi_type(type_nums=[10,14],
                     log_dir="logs_types",
                     tree_kind: str = "graph"):
     random.seed(7)
-    priors = Priors(potency_mode="fixed_k", fixed_k=fixed_k, rho=0.2)
     results = []
 
     # --- 1. Start Overall Timer ---
@@ -5138,6 +5163,8 @@ def main_multi_type(type_nums=[10,14],
         writer.writerow(["Type","MapIdx","Cells","Jaccard","GT Loss","Actual Pred Loss","Greedy Pred Loss", "Edge_Jaccard","IM_similarity"])
 
         for t in type_nums:
+            fixed_k = t-1
+            priors = Priors(potency_mode="fixed_k", fixed_k=fixed_k, rho=0.2)
             for idx in range(maps_start, maps_end+1):
                 for cells in cells_list:
                     map_start_time = time.time()
@@ -5171,15 +5198,15 @@ def main_multi_type(type_nums=[10,14],
 
 if __name__ == "__main__":
     main_multi_type(
-        type_nums=[6],
-        maps_start=3,
-        maps_end=3,
-        cells_list=[50],
+        type_nums=[6,10,14],
+        maps_start=17,
+        maps_end=26,
+        cells_list=[50, 100, 200],
         iters = 100,
         restarts = 7,
         num_cores = 7,
-        fixed_k = 5,
-        out_csv="testing.csv",
+        fixed_k = 13,
+        out_csv="greedy_results_all_17_26.csv",
         log_dir="prac",
         tree_kind="graph"   # or "bin_trees" or "graph"
     )

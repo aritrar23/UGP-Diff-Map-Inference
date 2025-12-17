@@ -353,7 +353,6 @@ def build_A_map_from_flow(
     viterbi_flow: Dict[Tuple[FrozenSet[str], FrozenSet[str]], float],
     Z_map: Set[FrozenSet[str]],
     S_nodes: Set[FrozenSet[str]], # Set of singletons
-    z_score_threshold: float = 1.5 
 ) -> Dict[Tuple[FrozenSet[str], FrozenSet[str]], int]:
     """
     Builds the final A_map using the:
@@ -361,7 +360,7 @@ def build_A_map_from_flow(
     2. "Fitch Property Fix" (Union of children == Parent)
     3. "20% Flow Rule" (Secondary paths)
     """
-    print("Building final A_map from Viterbi flow...")
+    # print("Building final A_map from Viterbi flow...")
     A_map: Dict[Tuple[FrozenSet[str], FrozenSet[str]], int] = {}
     
     if not viterbi_flow:
@@ -376,8 +375,8 @@ def build_A_map_from_flow(
     sorted_nodes = sorted(list(Z_map), key=lambda x: (len(x), tuple(sorted(list(x)))), reverse=True)
     global_root = sorted_nodes[0]
     
-    print(f"Identified Global Root: {pot_str(global_root)}")
-    print("Constructing Arborescence (Best-Parent Backbone)...")
+    # print(f"Identified Global Root: {pot_str(global_root)}")
+    # print("Constructing Arborescence (Best-Parent Backbone)...")
 
     for child in sorted_nodes:
         if child == global_root:
@@ -402,17 +401,17 @@ def build_A_map_from_flow(
         if best_parent:
             edge = (best_parent, child)
             A_map[edge] = 1
-            print(f"  [BACKBONE] Child {pot_str(child)} connected to {pot_str(best_parent)} (w={max_flow:.2f})")
+            # print(f"  [BACKBONE] Child {pot_str(child)} connected to {pot_str(best_parent)} (w={max_flow:.2f})")
         else:
             print(f"  [WARN] Child {pot_str(child)} has no flow from any parent! It is disconnected.")
 
-    print(f"Backbone contains {len(A_map)} edges.")
+    # print(f"Backbone contains {len(A_map)} edges.")
 
 
     # --- 2. Step 4b: Enforce Fitch (Union) Property ---
     # (This section is UNCHANGED)
     
-    print("Enforcing Fitch (Union) property for progenitors...")
+    # print("Enforcing Fitch (Union) property for progenitors...")
     progenitor_nodes = Z_map - S_nodes
     added_for_fitch = 0
     
@@ -430,7 +429,7 @@ def build_A_map_from_flow(
         # We are missing fates
         missing_fates = P - current_union
         fates_still_missing = set(missing_fates) # mutable copy
-        print(f"  Fixing {pot_str(P)} (missing {pot_str(fates_still_missing)}):")
+        # print(f"  Fixing {pot_str(P)} (missing {pot_str(fates_still_missing)}):")
 
         # Find all candidate edges that provide *any* of the original missing fates
         candidate_edges = []
@@ -459,18 +458,18 @@ def build_A_map_from_flow(
                 A_map[edge] = 1
                 added_for_fitch += 1
                 fates_still_missing.difference_update(newly_provided)
-                print(f"    [FITCH] Added: {pot_str(edge[0])} -> {pot_str(edge[1])} (w={flow:.2f}, provides {pot_str(newly_provided)})")
+                # print(f"    [FITCH] Added: {pot_str(edge[0])} -> {pot_str(edge[1])} (w={flow:.2f}, provides {pot_str(newly_provided)})")
         
         if fates_still_missing:
             print(f"    [WARN] Could not satisfy Fitch for {pot_str(P)}. Still missing {pot_str(fates_still_missing)}.")
 
-    print(f"Added {added_for_fitch} edges to satisfy Fitch property.")
+    # print(f"Added {added_for_fitch} edges to satisfy Fitch property.")
 
 
     # --- 3. Step 4c: Add Secondary Paths (Paper's 20% Rule) ---
     # (This section is UNCHANGED)
     
-    print("Adding secondary edges with > 20% of parent's total flow...")
+    # print("Adding secondary edges with > 20% of parent's total flow...")
 
     total_flow_out = defaultdict(float)
     for (P, Q), flow in viterbi_flow.items():
@@ -494,9 +493,9 @@ def build_A_map_from_flow(
         if parent_total_flow > 0 and (flow / parent_total_flow) > 0.20:
             A_map[edge] = 1
             added_for_flow += 1
-            print(f"  [FLOW 20%] Added: {pot_str(P)} -> {pot_str(Q)} (w={flow:.2f} is > 20% of {parent_total_flow:.2f})")
+            # print(f"  [FLOW 20%] Added: {pot_str(P)} -> {pot_str(Q)} (w={flow:.2f} is > 20% of {parent_total_flow:.2f})")
             
-    print(f"Added {added_for_flow} edges satisfying the 20% flow rule.")
+    # print(f"Added {added_for_flow} edges satisfying the 20% flow rule.")
     print(f"Final A_map contains {len(A_map)} total edges.")
     
     return A_map
@@ -1813,7 +1812,7 @@ def calculate_viterbi_flow(
     """
     Calculates the "Viterbi flow" w(P,Q) for all potential edges using parallel workers.
     """
-    print(f"Calculating Viterbi flow w(P,Q) for all trees (cores={num_cores})...")
+    # print(f"Calculating Viterbi flow w(P,Q) for all trees (cores={num_cores})...")
     viterbi_flow = defaultdict(float)
     
     # 1. Pre-calculate leaf counts for all nodes (Fast, serial)
@@ -1852,6 +1851,65 @@ def calculate_viterbi_flow(
             local_flow = _worker_viterbi_flow(task)
             for edge, weight in local_flow.items():
                 viterbi_flow[edge] += weight
+                
+    return viterbi_flow
+
+def calculate_greedy_flow(
+    trees: List[TreeNode],
+    F_full: Structure, 
+    leaf_type_maps: List[Dict[str, str]],
+) -> Dict[Tuple[FrozenSet[str], FrozenSet[str]], float]:
+    """
+    Calculates the flow w(P,Q) for all potential edges using 
+    GREEDY optimal labeling (faster than Viterbi) in serial.
+    """
+    print(f"Calculating flow w(P,Q) using Greedy Labeling (Serial)...")
+    viterbi_flow = defaultdict(float)
+    
+    # 1. Pre-calculate leaf counts for all nodes
+    leaf_counts_all_trees = []
+    for tree in trees:
+        counts = {}
+        def post_order_leaf_count(v):
+            if v.is_leaf():
+                counts[v] = 1
+                return 1
+            count = sum(post_order_leaf_count(u) for u in v.children)
+            counts[v] = count
+            return count
+        post_order_leaf_count(tree)
+        leaf_counts_all_trees.append(counts)
+
+    # 2. Iterate through trees serially
+    for tree, leaf_map, counts in zip(trees, leaf_type_maps, leaf_counts_all_trees):
+        # Compute B_sets
+        B_sets = compute_B_sets(tree, leaf_map)
+        
+        # --- Use Greedy Labeling ---
+        # Returns: (labeling_dict, score)
+        labeling, score = greedy_bottom_up_labeling(
+            tree, 
+            F_full.labels_list, # Sorted list of Z_active
+            B_sets
+        )
+        
+        # If greedy search failed for this tree (score is -inf), skip it
+        if score == -math.inf:
+            continue
+            
+        # 3. Aggregate flow based on the labeling
+        for (v, u) in iter_edges(tree): # v=parent, u=child
+            P = labeling.get(v)
+            Q = labeling.get(u)
+            
+            if P is None or Q is None:
+                continue
+            
+            # If parent and child labels differ, it's a transition
+            if P != Q:
+                # Flow weighted by the size of the child's subtree (leaf count)
+                flow_weight = counts.get(u, 1)
+                viterbi_flow[(P, Q)] += flow_weight
                 
     return viterbi_flow
         
@@ -2549,6 +2607,36 @@ def greedy_tree_log_likelihood(
 
     return solve(root)
 
+def score_structure_greedy_likelihood(
+    struct: Structure,
+    trees: List[TreeNode],
+    leaf_type_maps: List[Dict[str,str]],
+    priors: Priors
+) -> float:
+    """
+    Fast scoring wrapper using the Greedy strategy.
+    """
+
+    total_logL = 0.0
+
+    # 2. Loop over trees
+    for root, leaf_map in zip(trees, leaf_type_maps):
+        B_sets = compute_B_sets(root, leaf_map)
+        
+        # Call the greedy solver
+        tree_score = greedy_tree_log_likelihood(
+            root, 
+            struct.labels_list, 
+            B_sets
+        )
+        
+        if tree_score == -math.inf:
+            return float("-inf")
+            
+        total_logL += (tree_score)
+
+    return total_logL
+
 def score_structure_greedy(
     struct: Structure,
     trees: List[TreeNode],
@@ -2895,7 +2983,7 @@ def mcmc_map_search(
     current = make_struct(Z0)
     
     # --- SCORE INITIAL STATE (Greedy) ---
-    curr_score = score_structure_greedy(current, trees, leaf_type_maps, priors)
+    curr_score = score_structure_greedy_likelihood(current, trees, leaf_type_maps, priors)
     
     if not math.isfinite(curr_score):
         # Fallback: Try 20 random seeds to find a valid starting point
@@ -2910,7 +2998,7 @@ def mcmc_map_search(
                 Z0.update(rng.sample(candidate_pool, 3))
             
             current = make_struct(Z0)
-            curr_score = score_structure_greedy(current, trees, leaf_type_maps, priors)
+            curr_score = score_structure_greedy_likelihood(current, trees, leaf_type_maps, priors)
             if math.isfinite(curr_score):
                 found = True
                 break
@@ -2971,7 +3059,7 @@ def mcmc_map_search(
         prop_struct = make_struct(Zprop)
         
         # --- SCORE PROPOSAL (Greedy) ---
-        prop_score = score_structure_greedy(prop_struct, trees, leaf_type_maps, priors)
+        prop_score = score_structure_greedy_likelihood(prop_struct, trees, leaf_type_maps, priors)
 
         # --- Accept/Reject ---
         accept = False
@@ -3758,7 +3846,7 @@ def _mcmc_worker_Z(args: tuple):
     return mcmc_map_search(
         S=S, trees=trees, leaf_type_maps=leaf_type_maps, priors=priors,
         unit_drop_edges=unit_drop_edges, fixed_k=fixed_k, steps=steps,
-        burn_in=burn_in, thin=thin, seed=seed, progress=True,
+        burn_in=burn_in, thin=thin, seed=seed, progress=False,
         candidate_pool=candidate_pool, block_swap_sizes=block_swap_sizes, fitch_probs = fitch_probs
     )
 
@@ -3861,7 +3949,7 @@ def run_mcmc_only_Z_parallel(
     best_score = float("-inf")
     all_stats = []
 
-    print(f"[Info] Starting {n_chains} parallel MCMC chains...")
+    # print(f"[Info] Starting {n_chains} parallel MCMC chains...")
     with ProcessPoolExecutor(max_workers=min(n_chains, min(num_cores,os.cpu_count() - 1))) as executor:
         futures = [executor.submit(_mcmc_worker_Z, t) for t in tasks]
 
@@ -3879,7 +3967,7 @@ def run_mcmc_only_Z_parallel(
             except Exception as e:
                 print(f"A chain failed with an error: {e}")
 
-    print(f"[Info] All chains finished. Best score found: {best_score:.4f}")
+    # print(f"[Info] All chains finished. Best score found: {best_score:.4f}")
     return best_struct, best_score, all_stats
 
 
@@ -4691,7 +4779,7 @@ def build_fate_map_path(map_idx: int, type_num: int, tree_kind: str = "graph") -
     )
     if not os.path.exists(fate_map_path):
         raise FileNotFoundError(f"[fate-map] Not found: {fate_map_path}")
-    print(f"[paths] fate_map_path = {fate_map_path}")
+    # print(f"[paths] fate_map_path = {fate_map_path}")
     return fate_map_path, idx4
 
 
@@ -4704,8 +4792,8 @@ def build_tree_and_meta_paths(map_idx: int, type_num: int, cells_n: int, tree_ki
     missing = [p for p in (tree_paths + meta_paths) if not os.path.exists(p)]
     if missing:
         raise FileNotFoundError("[trees/meta] Missing files:\n  " + "\n  ".join(missing))
-    print("[paths] tree_paths:");  [print("   ", p) for p in tree_paths]
-    print("[paths] meta_paths:");  [print("   ", p) for p in meta_paths]
+    # print("[paths] tree_paths:");  [print("   ", p) for p in tree_paths]
+    # print("[paths] meta_paths:");  [print("   ", p) for p in meta_paths]
     return tree_paths, meta_paths
 
 
@@ -5020,25 +5108,25 @@ def process_case( # This function REPLACES your old `process_case`
     total_nodes_n = sum(count_nodes(t) for t in trees)
 
     # --- Ground Truth Scoring (Unchanged) ---
-    ground_truth_sets, gt_loss, gt_Z_active, gt_edges = score_given_map_and_trees(
-        fate_map_path, trees, meta_paths,
-        fixed_k=priors.fixed_k,
-        unit_drop_edges=unit_drop_edges,
-        num_cores=num_cores  # <--- PASS NUM_CORES HERE
-    )
+    # ground_truth_sets, gt_loss, gt_Z_active, gt_edges = score_given_map_and_trees(
+    #     fate_map_path, trees, meta_paths,
+    #     fixed_k=priors.fixed_k,
+    #     unit_drop_edges=unit_drop_edges,
+    #     num_cores=num_cores  # <--- PASS NUM_CORES HERE
+    # )
     
     # --- 1. Prepare for MCMC (Unchanged) ---
-    print_fitch_potency_probs_once(
-        S, trees, leaf_type_maps,
-        header=f"\n[Potency ranking] type_{type_num}, map {idx4}, cells_{cells_n}"
-    )
+    # print_fitch_potency_probs_once(
+    #     S, trees, leaf_type_maps,
+    #     header=f"\n[Potency ranking] type_{type_num}, map {idx4}, cells_{cells_n}"
+    # )
     pool = collect_fitch_multis(S, trees, leaf_type_maps)
     fitch_probs_list = compute_fitch_potency_probs(S, trees, leaf_type_maps)
     fitch_probs_dict = {p: prob for p, prob in fitch_probs_list}
 
     # --- 2. Phase 1: Run MCMC for Z_map ---
     # This uses your *existing* Z-only MCMC function
-    print("\n--- Phase 1: Running MCMC to find best Potency Sets (Z) ---")
+    # print("\n--- Phase 1: Running MCMC to find best Potency Sets (Z) ---")
     bestF_Z, best_score_Z, all_stats_Z = run_mcmc_only_Z_parallel(
         S=S,
         trees=trees,
@@ -5058,29 +5146,29 @@ def process_case( # This function REPLACES your old `process_case`
         fitch_probs = fitch_probs_dict
     )
 
-    if all_stats_Z and log_dir:
-        plot_mcmc_traces(
-            all_stats=all_stats_Z,
-            title=f"MCMC Trace for Potency Sets (Z) - Map {idx4}, Cells {cells_n}",
-            output_path=os.path.join(log_dir, f"trace_Z_type{type_num}_{idx4}_cells{cells_n}.png")
-        )
+    # if all_stats_Z and log_dir:
+    #     plot_mcmc_traces(
+    #         all_stats=all_stats_Z,
+    #         title=f"MCMC Trace for Potency Sets (Z) - Map {idx4}, Cells {cells_n}",
+    #         output_path=os.path.join(log_dir, f"trace_Z_type{type_num}_{idx4}_cells{cells_n}.png")
+    #     )
 
     if bestF_Z is None:
         print("[ERROR] MCMC-Z Phase 1 failed to find a structure.")
         raise RuntimeError("MCMC-Z failed")
         
     Z_map = bestF_Z.Z_active
-    print(f"--- Phase 1 Complete. Best Z-only score: {best_score_Z:.4f} ---")
+    print(f"\n--- Phase 1 Complete. Best Z-only score: {best_score_Z:.4f} ---")
 
     # --- 3. Phase 2: Create F_full ---
-    print("\n--- Phase 2: Building fully-connected graph (F_full) ---")
+    print("\n--- Phase 2: Building final map (F) ---")
     A_full = _full_edges_for_Z(Z_map, unit_drop_edges)
     F_full = Structure(S, Z_map, A_full, unit_drop_edges)
-    print(f"F_full has {len(Z_map)} nodes and {len(A_full)} admissible edges.")
+    # print(f"F_full has {len(Z_map)} nodes and {len(A_full)} admissible edges.")
 
     # --- 4. Phase 3: Calculate Viterbi Flow ---
-    viterbi_flow = calculate_viterbi_flow(
-        trees, F_full, all_B_sets, leaf_type_maps, num_cores=num_cores
+    viterbi_flow = calculate_greedy_flow(
+        trees, F_full, leaf_type_maps
     )
     
     if not viterbi_flow:
@@ -5092,8 +5180,7 @@ def process_case( # This function REPLACES your old `process_case`
     A_map_final = build_A_map_from_flow(
         viterbi_flow, 
         Z_map,
-        S_nodes, # <-- ADD THIS ARGUMENT
-        z_score_threshold=1.5 # You can tune this
+        S_nodes # <-- ADD THIS ARGUMENT
     )
     
     # --- 6. Final Scoring and Reporting ---
@@ -5116,15 +5203,15 @@ def process_case( # This function REPLACES your old `process_case`
     
     # best_score_final = final_logp_Z + final_logp_A + final_log_L
 
-    best_score_final, best_score_likelihood = score_structure_parallel(
-            bestF_final, trees, leaf_type_maps, priors, num_cores=num_cores
-        )     
-    best_greedy_score = score_structure_greedy(bestF_final, trees, leaf_type_maps, priors)
+    # best_score_final, best_score_likelihood = score_structure_parallel(
+    #         bestF_final, trees, leaf_type_maps, priors, num_cores=num_cores
+    #     )     
+    best_greedy_score_likelihood = score_structure_greedy_likelihood(bestF_final, trees, leaf_type_maps, priors)
 
     # print(f"Final Log P(Z): {final_logp_Z:.4f}")
     # print(f"Final Log P(A|Z): {final_logp_A:.4f} ({len(A_map_final)} edges)")
-    print(f"Final score (with edges): {best_score_final:.4f}")
-    print(f"Final greedy score (with edges): {best_greedy_score:.4f}")
+    # print(f"Final score (with edges): {best_score_final:.4f}")
+    # print(f"Final greedy score (with edges): {best_greedy_score:.4f}")
     
     # print(f"\n=== BEST MAP (Hybrid) for type_{type_num}, map {idx4}, cells_{cells_n} ===")
     # multi_sorted = sorted([P for P in bestF_final.Z_active if len(P) >= 2],
@@ -5137,42 +5224,42 @@ def process_case( # This function REPLACES your old `process_case`
     #                key=lambda e: (len(e[0]), tuple(sorted(list(e[0]))), pot_str(e[1])))
     # for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
 
-    print("\nScores:")
-    print(f"  Log Posterior (Pred): {best_score_final:.6f}")
-    print(f"  Log Posterior (GT):   {gt_loss:.6f}")
+    # print("\nScores:")
+    # print(f"  Log Posterior (Pred): {best_score_final:.6f}")
+    # print(f"  Log Posterior (GT):   {gt_loss:.6f}")
 
-    # --- Potency Set Metrics ---
-    predicted_sets = {p for p in bestF_final.Z_active if len(p) > 1}
-    pretty_print_sets("Predicted Sets", predicted_sets)
-    pretty_print_sets("Ground Truth Sets", ground_truth_sets)
-    print("\nPredicted edges")
-    edges = sorted([e for e, v in bestF_final.A.items() if v == 1],
-                   key=lambda e: (len(e[0]), tuple(sorted(list(e[0]))), pot_str(e[1])))
-    for (u, v) in sorted(edges, key=lambda e: (len(e[0]), tuple(sorted(e[0])), len(e[1]), tuple(sorted(e[1])))):
-        print(f"{sorted(list(u))} -> {sorted(list(v))}")
-    # for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
-    print("\n=== Ground Truth Directed Edges ===")
-    for (u, v) in sorted(gt_edges, key=lambda e: (len(e[0]), tuple(sorted(e[0])), len(e[1]), tuple(sorted(e[1])))):
-        print(f"{sorted(list(u))} -> {sorted(list(v))}")
-    jd = jaccard_distance(predicted_sets, ground_truth_sets)
-    print(f"Jaccard Distance (Potency Sets): {jd:.6f}")
+    # # --- Potency Set Metrics ---
+    # predicted_sets = {p for p in bestF_final.Z_active if len(p) > 1}
+    # pretty_print_sets("Predicted Sets", predicted_sets)
+    # pretty_print_sets("Ground Truth Sets", ground_truth_sets)
+    # print("\nPredicted edges")
+    # edges = sorted([e for e, v in bestF_final.A.items() if v == 1],
+    #                key=lambda e: (len(e[0]), tuple(sorted(list(e[0]))), pot_str(e[1])))
+    # for (u, v) in sorted(edges, key=lambda e: (len(e[0]), tuple(sorted(e[0])), len(e[1]), tuple(sorted(e[1])))):
+    #     print(f"{sorted(list(u))} -> {sorted(list(v))}")
+    # # for P, Q in edges: print(f"  {pot_str(P)} -> {pot_str(Q)}")
+    # print("\n=== Ground Truth Directed Edges ===")
+    # for (u, v) in sorted(gt_edges, key=lambda e: (len(e[0]), tuple(sorted(e[0])), len(e[1]), tuple(sorted(e[1])))):
+    #     print(f"{sorted(list(u))} -> {sorted(list(v))}")
+    # jd = jaccard_distance(predicted_sets, ground_truth_sets)
+    # print(f"Jaccard Distance (Potency Sets): {jd:.6f}")
 
-    # --- Edge Set Metrics ---
-    pred_edges = edges_from_A(bestF_final.A)
-    edge_jacc = jaccard_distance_edges(pred_edges, gt_edges)
+    # # --- Edge Set Metrics ---
+    # pred_edges = edges_from_A(bestF_final.A)
+    # edge_jacc = jaccard_distance_edges(pred_edges, gt_edges)
     
-    nodes_union = gt_Z_active | set(bestF_final.Z_active)
-    im_d, im_s = ipsen_mikhailov_similarity(
-        nodes_union = nodes_union,
-        edges1 = pred_edges,
-        edges2 = gt_edges,
-        gamma = 0.08,
-    )
+    # nodes_union = gt_Z_active | set(bestF_final.Z_active)
+    # im_d, im_s = ipsen_mikhailov_similarity(
+    #     nodes_union = nodes_union,
+    #     edges1 = pred_edges,
+    #     edges2 = gt_edges,
+    #     gamma = 0.08,
+    # )
 
-    print("\n=== Edge-set Metrics ===")
-    print(f"Jaccard distance (edges): {edge_jacc:.6f}")
-    print(f"Ipsen–Mikhailov distance: {im_d:.6f}")
-    print(f"Ipsen–Mikhailov similarity: {im_s:.6f}")
+    # print("\n=== Edge-set Metrics ===")
+    # print(f"Jaccard distance (edges): {edge_jacc:.6f}")
+    # print(f"Ipsen–Mikhailov distance: {im_d:.6f}")
+    # print(f"Ipsen–Mikhailov similarity: {im_s:.6f}")
 
     # # --- <<< START CHANGE 2: Calculate Raw Likelihood >>> ---
     # # We calculate P(Data | F) without P(Z) or P(A).
@@ -5185,7 +5272,9 @@ def process_case( # This function REPLACES your old `process_case`
     # # --- <<< END CHANGE 2 >>> ---
 
     # Append raw_log_likelihood to the return values
-    return jd, gt_loss, best_score_final, best_greedy_score, edge_jacc, im_s, best_score_likelihood, total_nodes_n
+    best_score_final = 0
+    best_greedy_score = 0
+    return 0, 0, best_score_final, best_greedy_score, 0, 0, best_greedy_score_likelihood, total_nodes_n
 
 # --- <<< START CHANGE 3: The Combined K-Searcher >>> ---
 def find_best_k_combined(
@@ -5193,7 +5282,9 @@ def find_best_k_combined(
     iters, restarts, num_cores, log_dir, tree_kind,
     lambda_val=50.0, alpha=0.5,
     start_k = 3,
-    end_k = 7 
+    end_k = 7,
+    plot_k_sweep = True,
+    plots_dir = "plots_k_search" 
 ):
     detailed_results = [] # Store all results here
     
@@ -5223,14 +5314,19 @@ def find_best_k_combined(
             )
             
             # 1. Stats
-            nll = -raw_ll 
-            penalty = (lambda_val * math.log(total_nodes)) * math.exp(alpha * k) 
-            exp_score = nll + penalty
+            nll = -raw_ll
+            if plot_k_sweep: 
+                penalty = (lambda_val * math.log(total_nodes)) * math.exp(alpha * k) 
+                exp_score = nll + penalty
 
-            # 2. Store for plotting
-            k_list_for_plot.append(k)
-            nll_list_for_plot.append(nll)
-            exp_score_list_for_plot.append(exp_score)
+                # 2. Store for plotting
+                k_list_for_plot.append(k)
+                nll_list_for_plot.append(nll)
+                exp_score_list_for_plot.append(exp_score)
+
+            else:
+                penalty = 0
+                exp_score = 0
 
             # 3. Store detailed result for CSV
             detailed_results.append({
@@ -5240,28 +5336,34 @@ def find_best_k_combined(
                 'metrics': (jd, gt_loss, post_score, greedy_score, edge_jacc, im_s)
             })
             
-            print(f"   [RESULT k={k}] NLL: {nll:.2f} | ExpScore: {exp_score:.2f}")
+            print(f"[RESULT k={k}] NLL: {nll:.2f}")
+            if plot_k_sweep: print(f"   ExpScore: {exp_score:.2f}")
 
         except Exception as e:
             print(f"   [Error] Failed at k={k}: {e}")
             traceback.print_exc()
             continue
 
-    if not detailed_results:
-        print("[ERROR] No valid results found during k-search.")
-        return None
+    # if not detailed_results:
+    #     print("[ERROR] No valid results found during k-search.")
+    #     return None
 
     # --- Detect & Plot ---
-    elbow_k, exp_k = detect_elbow_and_plot(
-        k_list_for_plot, nll_list_for_plot, exp_score_list_for_plot, 
-        map_idx, cells_n, type_num, 
-        output_dir="plots_k_search"
-    )
+    if plot_k_sweep:
+        elbow_k, exp_k = detect_elbow_and_plot(
+            k_list_for_plot, nll_list_for_plot, exp_score_list_for_plot, 
+            map_idx, cells_n, type_num, 
+            output_dir=plots_dir
+        )
     
-    print(f"\n{'='*40}")
-    print(f"SUGGESTION (Elbow): k={elbow_k}")
-    print(f"SUGGESTION (Exp):   k={exp_k}")
-    print(f"{'='*40}\n")
+        print(f"\n{'='*40}")
+        print(f"SUGGESTION (Elbow): k={elbow_k}")
+        print(f"SUGGESTION (Exp):   k={exp_k}")
+        print(f"{'='*40}\n")
+    
+    else:
+        elbow_k = 0
+        exp_k = 0
     
     # Return winners + the list of all data points
     return {
@@ -5283,12 +5385,13 @@ def main_multi_type(type_nums=[10,14],
                     end_k = 7,   # New arg
                     out_csv="viterbi_fast_ksweep.csv",
                     log_dir="logs_types",
+                    plots_dir="plots_k_search",
                     tree_kind: str = "graph"):
     
     random.seed(7)
     # Ensure plot dir exists
-    if not os.path.exists("plots_k_search"):
-        os.makedirs("plots_k_search")
+    if not os.path.exists(plots_dir):
+        os.makedirs(plots_dir)
     
     # Hyperparams for Exponential Penalty (Targeting k=5 behavior based on your previous logs)
     # LAMBDA_VAL = 0.00917
@@ -5323,7 +5426,7 @@ def main_multi_type(type_nums=[10,14],
                             iters=iters, restarts=restarts, num_cores=num_cores, log_dir=log_dir,
                             tree_kind=tree_kind,
                             lambda_val=LAMBDA_VAL, alpha=ALPHA_VAL,
-                            start_k=start_k, end_k=end_k
+                            start_k=start_k, end_k=end_k, plot_k_sweep=True, plots_dir = plots_dir
                         )
 
                         if search_result:
@@ -5334,28 +5437,26 @@ def main_multi_type(type_nums=[10,14],
                             for res in search_result['all_data']:
                                 k_curr = res['k']
                                 nll = res['nll']
-                                exp_score = res['exp_score']
-                                (jd, gt_loss, pred_loss, pred_loss_greedy, edge_jacc, im_s) = res['metrics']
+                                # exp_score = res['exp_score']
+                                # (jd, gt_loss, pred_loss, pred_loss_greedy, edge_jacc, im_s) = res['metrics']
                                 
-                                # Determine flags
-                                is_exp_optimal = (k_curr == best_exp_k)
-                                is_elbow = (k_curr == best_elbow_k)
+                                # # Determine flags
+                                # is_exp_optimal = (k_curr == best_exp_k)
+                                # is_elbow = (k_curr == best_elbow_k)
                                 
                                 writer.writerow([
                                     t, idx, cells, k_curr, 
-                                    f"{nll:.4f}", f"{exp_score:.4f}", 
-                                    is_exp_optimal, is_elbow,
-                                    f"{jd:.6f}", f"{gt_loss:.6f}", f"{pred_loss:.6f}", f"{pred_loss_greedy:.6f}", f"{edge_jacc:.6f}", f"{im_s:.6f}"
+                                    f"{nll:.4f}"
                                 ])
                                 
-                            print(f"[SAVED ALL K] Map {idx} Cells {cells} (Winners: Exp={best_exp_k}, Elbow={best_elbow_k})")
+                            # print(f"[SAVED ALL K] Map {idx} Cells {cells} (Winners: Exp={best_exp_k}, Elbow={best_elbow_k})")
                         else:
-                            writer.writerow([t, idx, cells, "FAIL", "FAIL", "FAIL", "FAIL", "FAIL", "FAIL", "FAIL", "FAIL", "FAIL", "FAIL", "FAIL"])
+                            writer.writerow([t, idx, cells, "FAIL", "FAIL"])
 
                     except Exception as e:
                         print(f"[WARN] Failed type_{t} map {idx:04d} cells_{cells}: {repr(e)}")
                         traceback.print_exc()
-                        writer.writerow([t, idx, cells, "ERROR", "ERROR", "ERROR", "ERROR", "ERROR", "ERROR", "ERROR", "ERROR", "ERROR", "ERROR", "ERROR"])
+                        writer.writerow([t, idx, cells, "ERROR", "ERROR"])
 
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time
@@ -5366,72 +5467,97 @@ def main_multi_type(type_nums=[10,14],
 # --- <<< END CHANGE 4 >>> ---
 
 
-# if __name__ == "__main__":
-#     main_multi_type(
-#         type_nums=[6],
-#         maps_start=23,
-#         maps_end=26,
-#         cells_list=[50, 100, 200],
-#         iters = 100,
-#         restarts = 7,
-#         start_k = 3,
-#         end_k = 7,
-#         out_csv="k_sweep_6_23_26.csv",
-#         log_dir="prac",
-#         tree_kind="graph"   # or "bin_trees" or "graph"
-#     )
-
 if __name__ == "__main__":
+    main_multi_type(
+        type_nums=[6],
+        maps_start=2,
+        maps_end=11,
+        cells_list=[50, 100, 200],
+        iters = 100,
+        restarts = 7,
+        start_k = 3,
+        end_k = 7,
+        out_csv="k_sweep_6_greedy.csv",
+        log_dir="prac",
+        plots_dir = "plots_k_search_greedy",
+        tree_kind="graph"   # or "bin_trees" or "graph"
+    )
+
+# if __name__ == "__main__":
     
-    import csv
-    if not os.path.exists("prac_train"):
-        os.makedirs("prac_train")
+#     import csv
+#     if not os.path.exists("prac_train"):
+#         os.makedirs("prac_train")
     
-    # Configuration
-    total_start_time = time.time()
+#     # Configuration
+#     total_start_time = time.time()
 
-    type_nums = [10]
-    training_maps = list(range(2, 12)) + list(range(17,23))
-    cells_list = [50, 100, 200]
-    out_csv = "training_data_nll_10.csv"
+#     type_nums = [6, 10, 14]
+#     training_maps = list(range(23, 27))
+#     cells_list = [50, 100, 200]
+#     out_csv = "testing_data_nll_all.csv"
     
-    # Initialize CSV
-    with open(out_csv, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["Type","MapIdx","Cells","k","NLL","Exp_Score","Is_Exp_Optimal","Is_Elbow","Jaccard","GT_Loss","Pred_Loss","Greedy_Pred_Loss","Edge_Jaccard","IM_similarity"])
+#     # Initialize CSV
+#     with open(out_csv, "w", newline="") as f:
+#         writer = csv.writer(f)
+#         writer.writerow(["Type","MapIdx","Cells","k","NLL"])
 
-        # Loop
-        for t in type_nums:
-            for idx in training_maps:
-                for cells in cells_list:
-                    try:
-                        # Call your searcher
-                        # Note: Lambda/Alpha don't matter here, we just want the NLLs saved
-                        search_result = find_best_k_combined(
-                            idx, t, cells,
-                            iters=100, restarts=7, num_cores=7, log_dir="prac_train",
-                            tree_kind="graph",
-                            lambda_val=1.0, alpha=1.0, # Placeholders
-                            start_k=3, end_k=7
-                        )
+#         # Force write the header immediately
+#         f.flush()
+#         os.fsync(f.fileno())
 
-                        if search_result:
-                            # We just want to write the data rows
-                            for res in search_result['all_data']:
-                                writer.writerow([
-                                    t, idx, cells, res['k'], 
-                                    f"{res['nll']:.4f}", "0", False, False, # Placeholders for calcs we do later
-                                    "0", "0", "0", "0", "0", "0"
-                                ])
-                            print(f"[TRAIN DATA] Saved Map {idx} Cells {cells}")
-                    except Exception as e:
-                        print(f"Fail: {e}")
+#         # Loop
+#         for t in type_nums:
+#             for idx in training_maps:
+#                 for cells in cells_list:
+#                     try:
+#                         # Call your searcher
+#                         # Note: Lambda/Alpha don't matter here, we just want the NLLs saved
+#                         if t==6:
+#                             search_result = find_best_k_combined(
+#                                 idx, t, cells,
+#                                 iters=100, restarts=7, num_cores=7, log_dir="prac_train",
+#                                 tree_kind="graph",
+#                                 lambda_val=1.0, alpha=1.0, # Placeholders
+#                                 start_k=3, end_k=7, plot_k_sweep= False
+#                             )
+#                         elif t==10:
+#                             search_result = find_best_k_combined(
+#                                 idx, t, cells,
+#                                 iters=100, restarts=7, num_cores=7, log_dir="prac_train",
+#                                 tree_kind="graph",
+#                                 lambda_val=1.0, alpha=1.0, # Placeholders
+#                                 start_k=7, end_k=11, plot_k_sweep= False
+#                             )
+#                         else:
+#                             search_result = find_best_k_combined(
+#                                 idx, t, cells,
+#                                 iters=100, restarts=7, num_cores=7, log_dir="prac_train",
+#                                 tree_kind="graph",
+#                                 lambda_val=1.0, alpha=1.0, # Placeholders
+#                                 start_k=11, end_k=15, plot_k_sweep= False
+#                             )
 
-    total_end_time = time.time()
-    total_duration = total_end_time - total_start_time
-    print(f"\n{'='*60}")
-    print(f"All processing complete.")
-    print(f"Total Execution Time: {total_duration:.2f} seconds ({total_duration/60:.2f} min)")
-    print(f"{'='*60}")
+#                         if search_result:
+#                             # We just want to write the data rows
+#                             for res in search_result['all_data']:
+#                                 writer.writerow([
+#                                     t, idx, cells, res['k'], 
+#                                     f"{res['nll']:.4f}"
+#                                 ])
+
+#                             f.flush() 
+#                             os.fsync(f.fileno())
+
+#                             print(f"[TRAIN DATA] Saved Map {idx} Cells {cells}")
+#                     except Exception as e:
+#                         print(f"Fail: {e}")
+
+#     total_end_time = time.time()
+#     total_duration = total_end_time - total_start_time
+#     print(f"\n{'='*60}")
+#     print(f"All processing complete.")
+#     print(f"Total Execution Time: {total_duration:.2f} seconds ({total_duration/60:.2f} min)")
+#     print(f"{'='*60}")
 
    

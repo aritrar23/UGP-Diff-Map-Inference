@@ -7,18 +7,17 @@ import os
 # ==========================================
 # CONFIGURATION
 # ==========================================
-INPUT_CSV = "training_data_nll.csv"
-TARGET_K = 5
+INPUT_CSV = "training_data_nll_all.csv"
+OUT_PNG = "optimization_heatmap_greedy_6.png"
 NUM_TREES = 5
 
 # Path Configuration to find the trees
-INPUTS_DIR = "inputs" 
+INPUTS_DIR = "inputs"
 TREE_KIND = "graph"   # 'graph', 'poly_tree', or 'bin_tree'
-TYPE_NUM = 6          # Change this to match the type in your CSV
 
 # Search Space
-LAMBDA_RANGE = np.linspace(0.005, 0.015, 100)
-ALPHA_RANGE = np.linspace(0.9, 1.4, 100)
+LAMBDA_RANGE = np.linspace(0.01, 5, 100)
+ALPHA_RANGE = np.linspace(0.01, 5, 100)
 # ==========================================
 
 # ==========================================
@@ -31,46 +30,58 @@ class TreeNode:
         self.parent = None
 
     def add_child(self, child):
-        self.children.append(child); child.parent = self
+        self.children.append(child)
+        child.parent = self
 
 def parse_newick(newick: str) -> TreeNode:
     def _clean_label(tok: str) -> str:
         tok = tok.split(":", 1)[0].strip()
-        if tok and tok.replace(".", "", 1).isdigit(): return ""
+        if tok and tok.replace(".", "", 1).isdigit():
+            return ""
         return tok
 
     s = newick.strip()
-    if not s.endswith(";"): raise ValueError("Newick must end with ';'")
-    s = s[:-1]; i = 0
+    if not s.endswith(";"):
+        raise ValueError("Newick must end with ';'")
+    s = s[:-1]
+    i = 0
 
     def parse() -> TreeNode:
         nonlocal i, s
-        if i >= len(s): raise ValueError("Unexpected end")
+        if i >= len(s):
+            raise ValueError("Unexpected end")
         if s[i] == '(':
             i += 1
             node = TreeNode()
             while True:
                 node.add_child(parse())
-                if i >= len(s): raise ValueError("Unbalanced")
+                if i >= len(s):
+                    raise ValueError("Unbalanced")
                 if s[i] == ',':
-                    i += 1; continue
+                    i += 1
+                    continue
                 elif s[i] == ')':
-                    i += 1; break
+                    i += 1
+                    break
                 else:
                     raise ValueError(f"Unexpected char: {s[i]} at {i}")
             j = i
-            while j < len(s) and s[j] not in ',()': j += 1
+            while j < len(s) and s[j] not in ',()':
+                j += 1
             name_raw = s[i:j].strip()
             name = _clean_label(name_raw)
-            if name: node.name = name
+            if name:
+                node.name = name
             i = j
             return node
         else:
             j = i
-            while j < len(s) and s[j] not in ',()': j += 1
+            while j < len(s) and s[j] not in ',()':
+                j += 1
             name_raw = s[i:j].strip()
             name = _clean_label(name_raw)
-            if not name: raise ValueError("Leaf without name")
+            if not name:
+                raise ValueError("Leaf without name")
             i = j
             return TreeNode(name=name)
 
@@ -78,17 +89,22 @@ def parse_newick(newick: str) -> TreeNode:
     return root
 
 def read_newick_file(path: str) -> TreeNode:
-    with open(path, "r") as f: s = f.read().strip()
+    with open(path, "r") as f:
+        s = f.read().strip()
     return parse_newick(s)
 
 def count_nodes(root: TreeNode) -> int:
     """Recursively count all nodes (Internal + Leaves)"""
-    count = 1 
+    count = 1
     for child in root.children:
         count += count_nodes(child)
     return count
 
 def get_exact_n_for_dataset(map_idx: int, cells_n: int, type_num: int, tree_kind: str) -> int:
+    """
+    Compute total nodes for a given dataset, using its specific type_num
+    to locate the correct tree folder: .../type_{type_num}/cells_{cells_n}
+    """
     idx4 = f"{map_idx:04d}"
     folder = os.path.join(INPUTS_DIR, "trees", tree_kind, f"type_{type_num}", f"cells_{cells_n}")
     
@@ -123,22 +139,28 @@ def main():
     df = df[df['NLL'] != 'FAIL']
     df['NLL'] = pd.to_numeric(df['NLL'])
     
-    pivot = df.pivot_table(index=['MapIdx', 'Cells'], columns='k', values='NLL')
-    pivot = pivot.dropna()
+    # IMPORTANT: include Type in the index so each (Type, MapIdx, Cells) is a separate dataset
+    pivot = df.pivot_table(index=['Type', 'MapIdx', 'Cells'], columns='k', values='NLL')
+    # DO NOT dropna() – rows have NaNs for k that don't exist for that Type
     valid_samples = len(pivot)
     
     print(f"Optimization running on {valid_samples} samples.")
-    if valid_samples == 0: return
+    if valid_samples == 0:
+        return
 
     # Arrays
-    nll_matrix = pivot.to_numpy()
+    nll_matrix = pivot.to_numpy().astype(float)
     k_vals = pivot.columns.to_numpy()
-    
-    # Exact N Calculation
+
+    # Ground-truth k: target_k = Type - 1, taken directly from the index level
+    type_values = pivot.index.get_level_values('Type').to_numpy()
+    target_k_vector = type_values - 1
+
+    # Exact N Calculation using per-dataset type_num
     print(f"Calculating exact node counts (Total N) for all datasets...")
     exact_n_list = []
-    for map_idx, cells_n in pivot.index:
-        n_total = get_exact_n_for_dataset(int(map_idx), int(cells_n), TYPE_NUM, TREE_KIND)
+    for type_num, map_idx, cells_n in pivot.index:
+        n_total = get_exact_n_for_dataset(int(map_idx), int(cells_n), int(type_num), TREE_KIND)
         exact_n_list.append(n_total)
 
     n_vector = np.array(exact_n_list)
@@ -153,9 +175,11 @@ def main():
             exp_term = np.exp(alp * k_vals).reshape(1, -1)
             penalties = (lam * log_n_vector) @ exp_term
             scores = nll_matrix + penalties
+            # Treat missing NLLs as +inf so they are never chosen in argmin
+            scores = np.where(np.isnan(scores), np.inf, scores)
             best_indices = np.argmin(scores, axis=1)
             predicted_ks = k_vals[best_indices]
-            correct = np.sum(predicted_ks == TARGET_K)
+            correct = np.sum(predicted_ks == target_k_vector)
             accuracy_grid[i, j] = correct / valid_samples
 
     # Results
@@ -202,17 +226,21 @@ def main():
     best_exp_term = np.exp(best_alpha * k_vals).reshape(1, -1)
     best_penalties = (best_lambda * log_n_vector) @ best_exp_term
     final_scores = nll_matrix + best_penalties
+    final_scores = np.where(np.isnan(final_scores), np.inf, final_scores)
     final_winners = k_vals[np.argmin(final_scores, axis=1)]
     
     # Build Table
+    type_idx = pivot.index.get_level_values('Type')
     map_indices = pivot.index.get_level_values('MapIdx')
     cell_counts = pivot.index.get_level_values('Cells')
-    is_correct = (final_winners == TARGET_K)
+    is_correct = (final_winners == target_k_vector)
     
     results_df = pd.DataFrame({
+        'Type': type_idx,
         'Map': map_indices,
         'Cells': cell_counts,
-        'Total_N': n_vector,        # <--- Exact N Included
+        'Total_N': n_vector,        # Exact N Included
+        'Target_k': target_k_vector,
         'Pred_k': final_winners,
         'Correct': is_correct
     })
@@ -222,10 +250,12 @@ def main():
 
     # Plot Heatmap
     plt.figure(figsize=(10, 8))
-    ax = sns.heatmap(accuracy_grid, 
-                     xticklabels=np.round(ALPHA_RANGE, 2)[::5], 
-                     yticklabels=np.round(LAMBDA_RANGE, 2)[::5],
-                     cmap="viridis")
+    ax = sns.heatmap(
+        accuracy_grid,
+        xticklabels=np.round(ALPHA_RANGE, 2)[::5],
+        yticklabels=np.round(LAMBDA_RANGE, 2)[::5],
+        cmap="viridis"
+    )
     ax.invert_yaxis()
     ax.set_xticks(np.arange(0, len(ALPHA_RANGE), 5))
     ax.set_yticks(np.arange(0, len(LAMBDA_RANGE), 5))
@@ -234,16 +264,30 @@ def main():
     plt.title(f"Accuracy with Exact N\nMax: {max_acc*100:.1f}%")
 
     rows, cols = zip(*best_indices)
-    plt.scatter(np.array(cols) + 0.5, np.array(rows) + 0.5, 
-                color='red', marker='*', s=80, label='All Optimal Pairs')
+    plt.scatter(
+        np.array(cols) + 0.5,
+        np.array(rows) + 0.5,
+        color='red',
+        marker='*',
+        s=80,
+        label='All Optimal Pairs'
+    )
 
-    plt.scatter(final_idx[1] + 0.5, final_idx[0] + 0.5, 
-                color='white', edgecolors='black', marker='*', s=250, 
-                label='Representative Center')
+    plt.scatter(
+        final_idx[1] + 0.5,
+        final_idx[0] + 0.5,
+        color='white',
+        edgecolors='black',
+        marker='*',
+        s=250,
+        label='Representative Center'
+    )
 
     plt.legend()
-    plt.savefig("optimization_heatmap_exact.png")
-    print("\nHeatmap saved to 'optimization_heatmap_exact.png'")
+    plt.savefig(OUT_PNG)
+    print(f"\nHeatmap saved to {OUT_PNG}")
 
 if __name__ == "__main__":
     main()
+
+
